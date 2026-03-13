@@ -1,0 +1,28 @@
+[Unit]
+Description=Pi BT Hub - Unified Bluetooth Management Web UI
+Documentation=https://gitea.hemna.com/admin/pi-bt-hub
+After=bluetooth.target dbus.service
+Requires=bluetooth.target dbus.service
+Wants=bt-bridge.service
+
+[Service]
+Type=simple
+ExecStart=/home/waboring/pi-bt-hub/.venv/bin/uvicorn bt_hub.main:app --host 0.0.0.0 --port 8080
+WorkingDirectory=/home/waboring/pi-bt-hub/backend
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+User=root
+Group=root
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/waboring/pi-bt-hub/backend/src
+Environment=BT_HUB_DB_PATH=/home/waboring/pi-bt-hub/data/bt_hub.db
+Environment=BT_HUB_LOG_LEVEL=INFO
+Environment=BT_HUB_BRIDGE_ENABLED=true
+Environment=BT_HUB_BRIDGE_URL=http://localhost:8081
+
+[Install]
+WantedBy=multi-user.target
