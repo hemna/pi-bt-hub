@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
 from bt_hub.api import AdapterUnavailableError
+from bt_hub.config import get_settings
 from bt_hub.deps import get_bt_bridge_client, get_device_store, get_templates
 from bt_hub.models.device import (
     AdapterState,
@@ -102,14 +103,11 @@ async def index_page(
     except Exception:
         adapter = None
 
-    # Probe BT Bridge if configured (graceful fallback)
+    # Probe BT Bridge if enabled (graceful fallback)
     bridge_status = None
-    bridge_port = None
-    if bridge_client.is_configured:
+    settings = get_settings()
+    if settings.bridge_enabled:
         bridge_status = await bridge_client.get_status()
-        from bt_hub.config import get_settings
-
-        bridge_port = get_settings().bt_bridge_port
 
     devices = await store.get_all_devices()
     return templates.TemplateResponse(
@@ -120,7 +118,6 @@ async def index_page(
             "device_count": len(devices),
             "is_scanning": bt.is_scanning,
             "bridge_status": bridge_status,
-            "bridge_configured": bridge_client.is_configured,
-            "bridge_port": bridge_port,
+            "bridge_enabled": settings.bridge_enabled,
         },
     )

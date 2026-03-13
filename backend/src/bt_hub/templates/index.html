@@ -122,7 +122,7 @@
   </div>
 </div>
 
-{% if bridge_configured %}
+{% if bridge_enabled %}
 <!-- BT Bridge Status Card -->
 <div class="card mb-4">
   <div class="card__header">
@@ -131,7 +131,7 @@
       {% if bridge_status %}
         <span class="badge badge--on">Online</span>
       {% else %}
-        <span class="badge badge--off">Unreachable</span>
+        <span class="badge badge--off">Offline</span>
       {% endif %}
     </div>
   </div>
@@ -157,8 +157,6 @@
           <span class="badge badge--on">Connected</span>
         {% elif classic_state == 'connecting' %}
           <span class="badge badge--pairing">Connecting</span>
-        {% elif classic_state == 'error' %}
-          <span class="badge badge--off">Error</span>
         {% else %}
           <span class="badge badge--disconnected">{{ classic_state | capitalize }}</span>
         {% endif %}
@@ -169,49 +167,28 @@
 
       {% if bridge_status.tcp_kiss and bridge_status.tcp_kiss.enabled %}
       <dt>TCP KISS</dt>
-      <dd>
-        {{ bridge_status.tcp_kiss.client_count }} / {{ bridge_status.tcp_kiss.max_clients }} clients
-        {% if bridge_status.tcp_kiss.listening %}
-          <span class="badge badge--on ml-1">Listening</span>
-        {% endif %}
-      </dd>
+      <dd>{{ bridge_status.tcp_kiss.client_count }} / {{ bridge_status.tcp_kiss.max_clients }} clients</dd>
       {% endif %}
 
       <dt>Uptime</dt>
       <dd>
         {% set uptime = bridge_status.uptime_seconds | int %}
-        {% if uptime >= 86400 %}
-          {{ (uptime // 86400) }}d {{ ((uptime % 86400) // 3600) }}h
-        {% elif uptime >= 3600 %}
-          {{ (uptime // 3600) }}h {{ ((uptime % 3600) // 60) }}m
-        {% elif uptime >= 60 %}
-          {{ (uptime // 60) }}m {{ (uptime % 60) }}s
-        {% else %}
-          {{ uptime }}s
-        {% endif %}
+        {% if uptime >= 3600 %}{{ (uptime // 3600) }}h {{ ((uptime % 3600) // 60) }}m
+        {% elif uptime >= 60 %}{{ (uptime // 60) }}m {{ (uptime % 60) }}s
+        {% else %}{{ uptime }}s{% endif %}
       </dd>
-
-      <dt>Version</dt>
-      <dd>{{ bridge_status.version | default('unknown') }}</dd>
     </div>
 
     <div class="action-group">
-      <a :href="'http://' + window.location.hostname + ':' + {{ bridge_port }}"
-         class="btn btn--primary"
-         target="_blank"
-         rel="noopener">
-        Open Bridge UI &#8599;
-      </a>
+      <a href="/bridge" class="btn btn--primary">Bridge Details</a>
+      <a href="/bridge/tnc" class="btn btn--secondary">TNC Devices</a>
     </div>
 
     {% else %}
     <div class="empty-state">
       <div class="empty-state__icon">&#128279;</div>
-      <div class="empty-state__title">Bridge Unreachable</div>
-      <p class="empty-state__text">
-        The BT Bridge service is configured but not responding.
-        Check that the bt-bridge service is running.
-      </p>
+      <div class="empty-state__title">Bridge Offline</div>
+      <p class="empty-state__text">The bridge daemon is not responding. Check that bt-bridge.service is running.</p>
     </div>
     {% endif %}
   </div>
