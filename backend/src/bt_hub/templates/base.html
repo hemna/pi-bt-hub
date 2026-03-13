@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Bluetooth Web UI{% endblock %}</title>
+  <title>{% block title %}Pi BT Hub{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/theme.css">
   <link rel="stylesheet" href="/static/css/main.css">
   <script src="/static/js/htmx.min.js" defer></script>
@@ -97,7 +97,7 @@
 
   <!-- Navigation -->
   <nav class="nav" x-data="{ menuOpen: false }">
-    <a href="/" class="nav__brand">BT Web UI</a>
+    <a href="/" class="nav__brand">Pi BT Hub</a>
 
     <button class="nav__hamburger"
             @click="menuOpen = !menuOpen"
@@ -118,6 +118,20 @@
           Devices
         </a>
       </li>
+      {% if bridge_enabled %}
+      <li>
+        <a href="/bridge"
+           class="nav__link {% if request.url.path == '/bridge' %}nav__link--active{% endif %}">
+          Bridge
+        </a>
+      </li>
+      <li>
+        <a href="/bridge/tnc"
+           class="nav__link {% if request.url.path == '/bridge/tnc' %}nav__link--active{% endif %}">
+          TNC Devices
+        </a>
+      </li>
+      {% endif %}
       <li>
         <a href="/settings"
            class="nav__link {% if request.url.path == '/settings' %}nav__link--active{% endif %}">
@@ -130,16 +144,6 @@
           Logs
         </a>
       </li>
-      {% if bridge_configured %}
-      <li>
-        <a :href="'http://' + window.location.hostname + ':' + {{ bridge_port }}"
-           class="nav__link"
-           target="_blank"
-           rel="noopener">
-          Bridge &#8599;
-        </a>
-      </li>
-      {% endif %}
     </ul>
 
     <div class="nav__actions">
