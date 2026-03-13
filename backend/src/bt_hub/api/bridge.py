@@ -10,7 +10,7 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from bt_hub.deps import get_bridge_proxy, get_templates
@@ -38,6 +38,17 @@ async def bridge_status(
     return _proxy_response(await proxy.get_status())
 
 
+@router.get("/api/bridge/status/stream")
+async def bridge_status_stream(
+    proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
+) -> StreamingResponse:
+    return StreamingResponse(
+        proxy.stream_status(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
 @router.get("/api/bridge/stats")
 async def bridge_stats(
     proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
@@ -53,6 +64,17 @@ async def bridge_logs_recent(
     proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
 ) -> JSONResponse:
     return _proxy_response(await proxy.get_recent_logs())
+
+
+@router.get("/api/bridge/logs/stream")
+async def bridge_logs_stream(
+    proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
+) -> StreamingResponse:
+    return StreamingResponse(
+        proxy.stream_logs(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 
 # --- Settings ---

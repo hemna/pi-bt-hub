@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -147,3 +148,33 @@ class BridgeProxy:
 
     async def connect_tnc(self, address: str) -> dict[str, Any] | None:
         return await self._post(f"/api/tnc-history/{address}/connect")
+
+    # --- SSE streaming ---
+
+    async def stream_status(self) -> AsyncIterator[str]:
+        """Relay SSE status stream from bridge daemon.
+
+        Yields SSE-formatted strings. On connection failure, yields
+        a bridge_disconnected event and stops.
+        """
+        try:
+            async with self._ensure_client().stream("GET", "/api/status/stream") as resp:
+                async for line in resp.aiter_lines():
+                    yield line + "\n"
+        except (httpx.ConnectError, httpx.TimeoutException):
+            yield "event: bridge_disconnected\ndata: {}\n\n"
+        except Exception:
+            logger.warning("SSE relay error", exc_info=True)
+            yield "event: bridge_disconnected\ndata: {}\n\n"
+
+    async def stream_logs(self) -> AsyncIterator[str]:
+        """Relay SSE log stream from bridge daemon."""
+        try:
+            async with self._ensure_client().stream("GET", "/api/logs/stream") as resp:
+                async for line in resp.aiter_lines():
+                    yield line + "\n"
+        except (httpx.ConnectError, httpx.TimeoutException):
+            yield "event: bridge_disconnected\ndata: {}\n\n"
+        except Exception:
+            logger.warning("SSE log relay error", exc_info=True)
+            yield "event: bridge_disconnected\ndata: {}\n\n"
