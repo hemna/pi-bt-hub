@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Bluetooth Web UI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Bluetooth adapter overview and quick actions</p>
+</div>
+
+<!-- Adapter Status Card -->
+<div class="card mb-4" x-data="{ scanning: false }">
+  <div class="card__header">
+    <h2>Adapter Status</h2>
+    {% if adapter %}
+    <div class="flex items-center gap-2">
+      {% if adapter.powered %}
+        <span class="badge badge--on">Powered On</span>
+      {% else %}
+        <span class="badge badge--off">Powered Off</span>
+      {% endif %}
+      {% if adapter.discovering %}
+        <span class="badge badge--pairing">Scanning</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="card__body">
+    {% if adapter %}
+    <div class="info-grid mb-4">
+      <dt>Address</dt>
+      <dd><code>{{ adapter.address }}</code></dd>
+
+      <dt>Name</dt>
+      <dd>{{ adapter.name }}</dd>
+
+      <dt>Powered</dt>
+      <dd>
+        {% if adapter.powered %}
+          <span class="badge badge--on">Yes</span>
+        {% else %}
+          <span class="badge badge--off">No</span>
+        {% endif %}
+      </dd>
+
+      <dt>Discoverable</dt>
+      <dd>
+        {% if adapter.discoverable %}
+          <span class="badge badge--on">Yes</span>
+        {% else %}
+          <span class="badge badge--off">No</span>
+        {% endif %}
+      </dd>
+
+      <dt>Discovering</dt>
+      <dd>
+        {% if adapter.discovering %}
+          <span class="badge badge--pairing">Active</span>
+        {% else %}
+          <span class="badge badge--disconnected">Inactive</span>
+        {% endif %}
+      </dd>
+    </div>
+
+    <div class="action-group">
+      <!-- Power Toggle -->
+      {% if adapter.powered %}
+      <button class="btn btn--secondary"
+              hx-post="/api/adapter/power"
+              hx-vals='{"powered": false}'
+              hx-target="body"
+              hx-swap="outerHTML"
+              hx-indicator=".power-indicator">
+        Power Off
+        <span class="spinner spinner--sm htmx-indicator power-indicator"></span>
+      </button>
+      {% else %}
+      <button class="btn btn--primary"
+              hx-post="/api/adapter/power"
+              hx-vals='{"powered": true}'
+              hx-target="body"
+              hx-swap="outerHTML"
+              hx-indicator=".power-indicator">
+        Power On
+        <span class="spinner spinner--sm htmx-indicator power-indicator"></span>
+      </button>
+      {% endif %}
+
+      <!-- Scan Toggle -->
+      {% if adapter.powered %}
+        {% if adapter.discovering %}
+        <button class="btn btn--danger"
+                hx-post="/api/scan/stop"
+                hx-target="#scan-results"
+                hx-indicator=".scan-indicator"
+                @click="scanning = false">
+          Stop Scan
+          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+        </button>
+        {% else %}
+        <button class="btn btn--primary"
+                hx-post="/api/scan/start"
+                hx-target="#scan-results"
+                hx-indicator=".scan-indicator"
+                @click="scanning = true">
+          Start Scan
+          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+        </button>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state__icon">&#128225;</div>
+      <div class="empty-state__title">No Adapter Found</div>
+      <p class="empty-state__text">
+        No Bluetooth adapter was detected. Make sure a Bluetooth adapter is plugged in and BlueZ is running.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if bridge_configured %}
+<!-- BT Bridge Status Card -->
+<div class="card mb-4">
+  <div class="card__header">
+    <h2>BT Bridge</h2>
+    <div class="flex items-center gap-2">
+      {% if bridge_status %}
+        <span class="badge badge--on">Online</span>
+      {% else %}
+        <span class="badge badge--off">Unreachable</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card__body">
+    {% if bridge_status %}
+    <div class="info-grid mb-4">
+      <dt>BLE</dt>
+      <dd>
+        {% set ble_state = bridge_status.ble.state %}
+        {% if ble_state == 'connected' %}
+          <span class="badge badge--on">Connected</span>
+        {% elif ble_state == 'scanning' %}
+          <span class="badge badge--pairing">Advertising</span>
+        {% else %}
+          <span class="badge badge--disconnected">{{ ble_state | capitalize }}</span>
+        {% endif %}
+      </dd>
+
+      <dt>Classic</dt>
+      <dd>
+        {% set classic_state = bridge_status.classic.state %}
+        {% if classic_state == 'connected' %}
+          <span class="badge badge--on">Connected</span>
+        {% elif classic_state == 'connecting' %}
+          <span class="badge badge--pairing">Connecting</span>
+        {% elif classic_state == 'error' %}
+          <span class="badge badge--off">Error</span>
+        {% else %}
+          <span class="badge badge--disconnected">{{ classic_state | capitalize }}</span>
+        {% endif %}
+        {% if bridge_status.classic.target_address %}
+          <code class="ml-1">{{ bridge_status.classic.target_address }}</code>
+        {% endif %}
+      </dd>
+
+      {% if bridge_status.tcp_kiss and bridge_status.tcp_kiss.enabled %}
+      <dt>TCP KISS</dt>
+      <dd>
+        {{ bridge_status.tcp_kiss.client_count }} / {{ bridge_status.tcp_kiss.max_clients }} clients
+        {% if bridge_status.tcp_kiss.listening %}
+          <span class="badge badge--on ml-1">Listening</span>
+        {% endif %}
+      </dd>
+      {% endif %}
+
+      <dt>Uptime</dt>
+      <dd>
+        {% set uptime = bridge_status.uptime_seconds | int %}
+        {% if uptime >= 86400 %}
+          {{ (uptime // 86400) }}d {{ ((uptime % 86400) // 3600) }}h
+        {% elif uptime >= 3600 %}
+          {{ (uptime // 3600) }}h {{ ((uptime % 3600) // 60) }}m
+        {% elif uptime >= 60 %}
+          {{ (uptime // 60) }}m {{ (uptime % 60) }}s
+        {% else %}
+          {{ uptime }}s
+        {% endif %}
+      </dd>
+
+      <dt>Version</dt>
+      <dd>{{ bridge_status.version | default('unknown') }}</dd>
+    </div>
+
+    <div class="action-group">
+      <a :href="'http://' + window.location.hostname + ':' + {{ bridge_port }}"
+         class="btn btn--primary"
+         target="_blank"
+         rel="noopener">
+        Open Bridge UI &#8599;
+      </a>
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state__icon">&#128279;</div>
+      <div class="empty-state__title">Bridge Unreachable</div>
+      <p class="empty-state__text">
+        The BT Bridge service is configured but not responding.
+        Check that the bt-bridge service is running.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Scan Results -->
+<div class="card mb-4" id="scan-results-card">
+  <div class="card__header">
+    <h2>Scan Results</h2>
+  </div>
+  <div class="card__body" id="scan-results">
+    <div class="empty-state">
+      <div class="empty-state__icon">&#128269;</div>
+      <p class="empty-state__text">
+        Click "Start Scan" to discover nearby Bluetooth devices.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Device Summary Stats -->
+<div class="stat-grid mb-4">
+  <div class="stat-card">
+    <div class="stat-card__value">{{ device_count | default(0) }}</div>
+    <div class="stat-card__label">Total Devices</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__value">{{ paired_count | default(0) }}</div>
+    <div class="stat-card__label">Paired</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__value">{{ connected_count | default(0) }}</div>
+    <div class="stat-card__label">Connected</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__value">{{ favorite_count | default(0) }}</div>
+    <div class="stat-card__label">Favorites</div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+  <div class="card__header">
+    <h2>Quick Actions</h2>
+  </div>
+  <div class="card__body">
+    <div class="action-group">
+      <a href="/devices" class="btn btn--secondary">
+        View All Devices
+      </a>
+      <a href="/devices?filter=connected" class="btn btn--secondary">
+        Connected Devices
+      </a>
+      <a href="/devices?filter=favorites" class="btn btn--secondary">
+        Favorite Devices
+      </a>
+      <a href="/settings" class="btn btn--secondary">
+        Settings
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

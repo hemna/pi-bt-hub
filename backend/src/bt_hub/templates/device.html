@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.alias or device.name or device.mac_address }} - Bluetooth Web UI{% endblock %}
+
+{% block content %}
+<div x-data="{ showDeleteModal: false }">
+
+  <!-- Back link -->
+  <div class="mb-4">
+    <a href="/devices" class="btn btn--secondary btn--sm">&larr; Back to Devices</a>
+  </div>
+
+  <!-- Device Header -->
+  <div class="detail-header">
+    <div class="device-icon detail-header__icon">
+      {% if device.device_type == 'audio' %}&#128266;
+      {% elif device.device_type == 'input' %}&#9000;&#65039;
+      {% elif device.device_type == 'phone' %}&#128241;
+      {% elif device.device_type == 'computer' %}&#128187;
+      {% elif device.device_type == 'network' %}&#127760;
+      {% else %}&#128225;
+      {% endif %}
+    </div>
+    <div class="detail-header__text">
+      <div class="flex items-center gap-2">
+        <h1>{{ device.alias or device.name or device.mac_address }}</h1>
+        <button class="favorite-btn {% if device.is_favorite %}favorite-btn--active{% endif %}"
+                hx-patch="/api/devices/{{ device.mac_address }}"
+                hx-vals='{"is_favorite": {{ "false" if device.is_favorite else "true" }}}'
+                hx-target="body"
+                hx-swap="outerHTML"
+                title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
+          {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
+        </button>
+      </div>
+      <div class="flex items-center gap-2 mt-2">
+        <code class="device-card__mac">{{ device.mac_address }}</code>
+        {% include "partials/status_badge.html" %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Information -->
+  <div class="card detail-section">
+    <div class="card__header">
+      <h2>Device Information</h2>
+    </div>
+    <div class="card__body">
+      <dl class="info-grid">
+        <dt>MAC Address</dt>
+        <dd><code>{{ device.mac_address }}</code></dd>
+
+        <dt>Device Type</dt>
+        <dd>{{ (device.device_type or 'unknown') | capitalize }}</dd>
+
+        <dt>First Seen</dt>
+        <dd>{{ device.first_seen.strftime('%Y-%m-%d %H:%M') if device.first_seen else 'Unknown' }}</dd>
+
+        <dt>Last Seen</dt>
+        <dd>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else 'Unknown' }}</dd>
+
+        <dt>Last Connected</dt>
+        <dd>{{ device.last_connected.strftime('%Y-%m-%d %H:%M') if device.last_connected else 'Never' }}</dd>
+
+        <dt>Paired</dt>
+        <dd>
+          {% if device.paired %}
+            <span class="badge badge--on">Yes</span>
+          {% else %}
+            <span class="badge badge--off">No</span>
+          {% endif %}
+        </dd>
+
+        <dt>Trusted</dt>
+        <dd>
+          {% if device.trusted %}
+            <span class="badge badge--on">Yes</span>
+          {% else %}
+            <span class="badge badge--off">No</span>
+          {% endif %}
+        </dd>
+
+        {% if device.rssi is not none %}
+        <dt>RSSI</dt>
+        <dd>{{ device.rssi }} dBm</dd>
+        {% endif %}
+      </dl>
+    </div>
+  </div>
+
+  <!-- Alias & Notes -->
+  <div class="card detail-section">
+    <div class="card__header">
+      <h2>Custom Settings</h2>
+    </div>
+    <div class="card__body">
+      <div class="form-group">
+        <label class="form-label" for="alias-input">Alias</label>
+        <input type="text"
+               id="alias-input"
+               class="form-input"
+               name="alias"
+               value="{{ device.alias or '' }}"
+               placeholder="Enter a custom name..."
+               maxlength="64"
+               hx-patch="/api/devices/{{ device.mac_address }}"
+               hx-trigger="change"
+               hx-target="body"
+               hx-swap="outerHTML">
+        <p class="form-hint">A friendly name for this device (max 64 characters).</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="notes-input">Notes</label>
+        <textarea id="notes-input"
+                  class="form-textarea"
+                  name="notes"
+                  placeholder="Add notes about this device..."
+                  maxlength="500">{{ device.notes or '' }}</textarea>
+        <p class="form-hint">Up to 500 characters.</p>
+      </div>
+
+      <button class="btn btn--primary"
+              hx-patch="/api/devices/{{ device.mac_address }}"
+              hx-include="#notes-input"
+              hx-target="body"
+              hx-swap="outerHTML">
+        Save Notes
+      </button>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card detail-section">
+    <div class="card__header">
+      <h2>Actions</h2>
+    </div>
+    <div class="card__body">
+      <div class="action-group">
+        {% if not device.paired %}
+        <button class="btn btn--primary"
+                hx-post="/api/devices/{{ device.mac_address }}/pair"
+                hx-target="body"
+                hx-swap="outerHTML"
+                hx-indicator=".pair-indicator">
+          Pair
+          <span class="spinner spinner--sm htmx-indicator pair-indicator"></span>
+        </button>
+        {% endif %}
+
+        {% if device.paired and not device.connected %}
+        <button class="btn btn--success"
+                hx-post="/api/devices/{{ device.mac_address }}/connect"
+                hx-target="body"
+                hx-swap="outerHTML"
+                hx-indicator=".connect-indicator">
+          Connect
+          <span class="spinner spinner--sm htmx-indicator connect-indicator"></span>
+        </button>
+        {% endif %}
+
+        {% if device.connected %}
+        <button class="btn btn--secondary"
+                hx-post="/api/devices/{{ device.mac_address }}/disconnect"
+                hx-target="body"
+                hx-swap="outerHTML"
+                hx-indicator=".disconnect-indicator">
+          Disconnect
+          <span class="spinner spinner--sm htmx-indicator disconnect-indicator"></span>
+        </button>
+        {% endif %}
+
+        {% if device.paired and not device.trusted %}
+        <button class="btn btn--secondary"
+                hx-post="/api/devices/{{ device.mac_address }}/trust"
+                hx-target="body"
+                hx-swap="outerHTML">
+          Trust
+        </button>
+        {% endif %}
+
+        {% if device.trusted %}
+        <button class="btn btn--secondary"
+                hx-post="/api/devices/{{ device.mac_address }}/untrust"
+                hx-target="body"
+                hx-swap="outerHTML">
+          Untrust
+        </button>
+        {% endif %}
+
+        {% if device.paired %}
+        <button class="btn btn--danger"
+                hx-post="/api/devices/{{ device.mac_address }}/remove"
+                hx-target="body"
+                hx-swap="outerHTML"
+                hx-confirm="Remove pairing for this device?">
+          Remove Pairing
+        </button>
+        {% endif %}
+      </div>
+
+      <div class="mt-4">
+        <button class="btn btn--danger btn--sm"
+                @click="showDeleteModal = true">
+          Delete from History
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay"
+       x-show="showDeleteModal"
+       x-transition.opacity
+       @keydown.escape.window="showDeleteModal = false"
+       style="display: none;">
+    <div class="modal" @click.outside="showDeleteModal = false">
+      <h3 class="modal__title">Delete Device from History</h3>
+      <div class="modal__body">
+        <p>Are you sure you want to delete <strong>{{ device.alias or device.name or device.mac_address }}</strong> from the device history?</p>
+        <p class="mt-2">This will remove all stored information including alias, notes, and favorites status. This action cannot be undone.</p>
+      </div>
+      <div class="modal__actions">
+        <button class="btn btn--secondary" @click="showDeleteModal = false">Cancel</button>
+        <button class="btn btn--danger"
+                hx-delete="/api/devices/{{ device.mac_address }}"
+                hx-target="body"
+                hx-swap="outerHTML"
+                @click="showDeleteModal = false">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

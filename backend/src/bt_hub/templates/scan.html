@@ -1,0 +1,62 @@
+{# Scan results partial - returned by HTMX during/after scan #}
+
+{% if devices %}
+<div>
+  {% for device in devices %}
+  <div class="scan-result">
+    <div class="device-icon device-icon--sm">
+      {% if device.device_type == 'audio' %}&#128266;
+      {% elif device.device_type == 'input' %}&#9000;&#65039;
+      {% elif device.device_type == 'phone' %}&#128241;
+      {% elif device.device_type == 'computer' %}&#128187;
+      {% elif device.device_type == 'network' %}&#127760;
+      {% else %}&#128225;
+      {% endif %}
+    </div>
+
+    <div class="scan-result__info">
+      <div class="scan-result__name">
+        {{ device.name or device.mac_address }}
+      </div>
+      <div class="scan-result__detail">
+        <code>{{ device.mac_address }}</code>
+        {% if device.rssi is not none %}
+        <span title="Signal strength: {{ device.rssi }} dBm">
+          {# Simple RSSI visualization #}
+          {% set strength = [0, ((device.rssi + 100) / 60 * 4) | int] | max %}
+          {% set strength = [strength, 4] | min %}
+          <span class="rssi-bar">
+            <span class="rssi-bar__segment {% if strength >= 1 %}rssi-bar__segment--active{% endif %}" style="height: 4px;"></span>
+            <span class="rssi-bar__segment {% if strength >= 2 %}rssi-bar__segment--active{% endif %}" style="height: 6px;"></span>
+            <span class="rssi-bar__segment {% if strength >= 3 %}rssi-bar__segment--active{% endif %}" style="height: 9px;"></span>
+            <span class="rssi-bar__segment {% if strength >= 4 %}rssi-bar__segment--active{% endif %}" style="height: 12px;"></span>
+          </span>
+          {{ device.rssi }} dBm
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      {% if device.paired %}
+        <span class="badge badge--on">Paired</span>
+      {% else %}
+      <button class="btn btn--primary btn--sm"
+              hx-post="/api/devices/{{ device.mac_address }}/pair"
+              hx-target="#scan-results"
+              hx-indicator="closest .scan-result">
+        Pair
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-state__icon">&#128269;</div>
+  <p class="empty-state__text">
+    No devices found during the scan. Make sure your Bluetooth device is in pairing mode and try again.
+  </p>
+</div>
+{% endif %}

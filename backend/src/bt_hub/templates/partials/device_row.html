@@ -1,0 +1,63 @@
+{# Device row partial - compact list view #}
+
+<div class="device-row" id="device-row-{{ device.mac_address | replace(':', '-') }}">
+  <div class="device-icon device-icon--sm">
+    {% if device.device_type == 'audio' %}&#128266;
+    {% elif device.device_type == 'input' %}&#9000;&#65039;
+    {% elif device.device_type == 'phone' %}&#128241;
+    {% elif device.device_type == 'computer' %}&#128187;
+    {% elif device.device_type == 'network' %}&#127760;
+    {% else %}&#128225;
+    {% endif %}
+  </div>
+
+  <div class="device-row__info">
+    <div class="device-row__name">
+      <a href="/devices/{{ device.mac_address }}">
+        {{ device.alias or device.name or device.mac_address }}
+      </a>
+    </div>
+    <div class="device-row__mac">{{ device.mac_address }}</div>
+    {% include "partials/status_badge.html" %}
+  </div>
+
+  <span class="device-card__time">
+    {% if device.last_seen %}
+      {{ device.last_seen.strftime('%b %d, %H:%M') }}
+    {% endif %}
+  </span>
+
+  <div class="device-row__actions">
+    <button class="favorite-btn {% if device.is_favorite %}favorite-btn--active{% endif %}"
+            hx-patch="/api/devices/{{ device.mac_address }}"
+            hx-vals='{"is_favorite": {{ "false" if device.is_favorite else "true" }}}'
+            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+            hx-swap="outerHTML"
+            title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
+      {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
+    </button>
+
+    {% if device.paired and not device.connected %}
+    <button class="btn btn--success btn--sm"
+            hx-post="/api/devices/{{ device.mac_address }}/connect"
+            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+            hx-swap="outerHTML">
+      Connect
+    </button>
+    {% elif device.connected %}
+    <button class="btn btn--secondary btn--sm"
+            hx-post="/api/devices/{{ device.mac_address }}/disconnect"
+            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+            hx-swap="outerHTML">
+      Disconnect
+    </button>
+    {% elif not device.paired %}
+    <button class="btn btn--primary btn--sm"
+            hx-post="/api/devices/{{ device.mac_address }}/pair"
+            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+            hx-swap="outerHTML">
+      Pair
+    </button>
+    {% endif %}
+  </div>
+</div>

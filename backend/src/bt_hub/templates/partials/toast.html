@@ -1,0 +1,20 @@
+{# Toast notification partial - can be returned by HTMX responses #}
+{# Expects: toast_type (success|error|info|warning), toast_message (str) #}
+
+<div class="toast toast--{{ toast_type | default('info') }}"
+     x-data="{ show: true }"
+     x-show="show"
+     x-init="setTimeout(() => show = false, 5000)"
+     x-transition:leave="toast--leaving">
+  <span class="toast__icon">
+    {% if toast_type == 'success' %}&#10003;
+    {% elif toast_type == 'error' %}&#10007;
+    {% elif toast_type == 'warning' %}&#9888;
+    {% else %}&#8505;
+    {% endif %}
+  </span>
+  <span class="toast__content">{{ toast_message }}</span>
+  <button class="toast__close"
+          @click="show = false"
+          aria-label="Dismiss">&times;</button>
+</div>

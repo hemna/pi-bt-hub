@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - Bluetooth Web UI{% endblock %}
+
+{% block content %}
+<style>
+  /* Full-height layout for log viewer */
+  .logs-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 80px);
+    min-height: 400px;
+  }
+  .logs-page .page-header { flex-shrink: 0; }
+  .logs-page .card { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .logs-page .card__body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  .log-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .log-controls label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .log-controls select {
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+  }
+  .log-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .log-viewer {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    min-height: 200px;
+  }
+
+  .log-entry {
+    padding: 1px 4px;
+    border-radius: 2px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-entry:hover {
+    background: var(--bg-tertiary, rgba(128,128,128,0.1));
+  }
+  .log-ts {
+    color: var(--text-muted);
+  }
+  .log-level {
+    font-weight: 600;
+    min-width: 5.5ch;
+    display: inline-block;
+  }
+  .log-name {
+    color: var(--text-secondary);
+  }
+
+  /* Level-specific colors */
+  .log-debug .log-level { color: var(--text-muted); }
+  .log-info .log-level { color: var(--accent); }
+  .log-warning .log-level { color: var(--warning, #f59e0b); }
+  .log-error .log-level { color: var(--error, #ef4444); }
+  .log-critical .log-level { color: var(--error, #ef4444); font-weight: 700; }
+
+  .log-error { background: rgba(239, 68, 68, 0.05); }
+  .log-warning { background: rgba(245, 158, 11, 0.05); }
+
+  /* Connection status indicator */
+  .log-connection-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+  }
+  .log-connection-status.connected { background: var(--success, #22c55e); }
+  .log-connection-status.disconnected { background: var(--error, #ef4444); }
+
+  @media (max-width: 640px) {
+    .log-ts { display: none; }
+    .log-viewer { font-size: 0.75rem; }
+  }
+</style>
+
+<div class="logs-page">
+  <div class="page-header">
+    <h1>Live Logs</h1>
+    <p>Real-time application log output</p>
+  </div>
+
+  <div class="card">
+    <div class="card__header">
+      <h2>
+        <span class="log-connection-status disconnected" id="log-status"></span>
+        Log Stream
+      </h2>
+    </div>
+    <div class="card__body">
+      <div class="log-controls">
+        <label for="log-level-filter">Level:</label>
+        <select id="log-level-filter" onchange="applyLogFilter()">
+          <option value="DEBUG">Debug</option>
+          <option value="INFO" selected>Info</option>
+          <option value="WARNING">Warning</option>
+          <option value="ERROR">Error</option>
+        </select>
+        <button class="btn btn--secondary btn--sm" onclick="toggleLogPause()" id="log-pause-btn">Pause</button>
+        <button class="btn btn--secondary btn--sm" onclick="clearLogs()">Clear</button>
+        <span class="log-count" id="log-count">0 entries</span>
+      </div>
+      <div class="log-viewer" id="log-viewer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var _logEntries = [];
+  var _logPaused = false;
+  var _logMaxEntries = 500;
+  var _logLevelOrder = { 'DEBUG': 0, 'INFO': 1, 'WARNING': 2, 'ERROR': 3, 'CRITICAL': 4 };
+  var _logSSE = null;
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function setConnectionStatus(connected) {
+    var el = document.getElementById('log-status');
+    if (el) {
+      el.className = 'log-connection-status ' + (connected ? 'connected' : 'disconnected');
+    }
+  }
+
+  function startLogSSE() {
+    if (typeof EventSource === 'undefined') return;
+
+    _logSSE = new EventSource('/api/logs/stream');
+    setConnectionStatus(true);
+
+    _logSSE.addEventListener('log_history', function(event) {
+      try {
+        var data = JSON.parse(event.data);
+        if (data.entries && data.entries.length) {
+          data.entries.forEach(function(entry) { _logEntries.push(entry); });
+          trimLogEntries();
+          renderLogs();
+        }
+      } catch (e) {
+        console.error('Failed to parse log_history:', e);
+      }
+    });
+
+    _logSSE.addEventListener('log', function(event) {
+      try {
+        var entry = JSON.parse(event.data);
+        _logEntries.push(entry);
+        trimLogEntries();
+        if (!_logPaused) {
+          appendLogEntry(entry);
+          updateLogCount();
+        }
+      } catch (e) {
+        console.error('Failed to parse log entry:', e);
+      }
+    });
+
+    _logSSE.addEventListener('open', function() {
+      setConnectionStatus(true);
+    });
+
+    _logSSE.addEventListener('error', function() {
+      setConnectionStatus(false);
+    });
+  }
+
+  function trimLogEntries() {
+    while (_logEntries.length > _logMaxEntries) {
+      _logEntries.shift();
+    }
+  }
+
+  function getMinLevel() {
+    var select = document.getElementById('log-level-filter');
+    return select ? select.value : 'INFO';
+  }
+
+  function passesFilter(entry) {
+    var minLevel = getMinLevel();
+    var entryOrder = _logLevelOrder[entry.level] || 0;
+    var minOrder = _logLevelOrder[minLevel] || 0;
+    return entryOrder >= minOrder;
+  }
+
+  function formatLogEntry(entry) {
+    var levelClass = 'log-' + entry.level.toLowerCase();
+    var ts = '<span class="log-ts">' + escapeHtml(entry.timestamp) + '</span> ';
+    var level = '<span class="log-level">' + escapeHtml(entry.level).padEnd(7) + '</span> ';
+    var name = '<span class="log-name">[' + escapeHtml(entry.logger) + ']</span> ';
+    var msg = escapeHtml(entry.message);
+    return '<div class="log-entry ' + levelClass + '">' + ts + level + name + msg + '</div>';
+  }
+
+  function renderLogs() {
+    var viewer = document.getElementById('log-viewer');
+    if (!viewer) return;
+
+    var html = '';
+    _logEntries.forEach(function(entry) {
+      if (passesFilter(entry)) {
+        html += formatLogEntry(entry);
+      }
+    });
+    viewer.innerHTML = html;
+    updateLogCount();
+    scrollToBottom();
+  }
+
+  function appendLogEntry(entry) {
+    if (!passesFilter(entry)) return;
+
+    var viewer = document.getElementById('log-viewer');
+    if (!viewer) return;
+
+    var wasAtBottom = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 30;
+    viewer.insertAdjacentHTML('beforeend', formatLogEntry(entry));
+
+    while (viewer.children.length > _logMaxEntries) {
+      viewer.removeChild(viewer.firstChild);
+    }
+
+    if (wasAtBottom) {
+      scrollToBottom();
+    }
+  }
+
+  function scrollToBottom() {
+    var viewer = document.getElementById('log-viewer');
+    if (viewer) {
+      viewer.scrollTop = viewer.scrollHeight;
+    }
+  }
+
+  function updateLogCount() {
+    var countEl = document.getElementById('log-count');
+    if (!countEl) return;
+    var viewer = document.getElementById('log-viewer');
+    var visible = viewer ? viewer.children.length : 0;
+    countEl.textContent = visible + ' entries';
+  }
+
+  // Expose to onclick handlers
+  window.applyLogFilter = function() { renderLogs(); };
+
+  window.toggleLogPause = function() {
+    _logPaused = !_logPaused;
+    var btn = document.getElementById('log-pause-btn');
+    if (btn) btn.textContent = _logPaused ? 'Resume' : 'Pause';
+    if (!_logPaused) renderLogs();
+  };
+
+  window.clearLogs = function() {
+    _logEntries = [];
+    var viewer = document.getElementById('log-viewer');
+    if (viewer) viewer.innerHTML = '';
+    updateLogCount();
+  };
+
+  // Start SSE on page load
+  document.addEventListener('DOMContentLoaded', startLogSSE);
+})();
+</script>
+{% endblock %}

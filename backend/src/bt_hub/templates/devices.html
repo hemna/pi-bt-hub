@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Devices - Bluetooth Web UI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Devices</h1>
+  <p>Manage your Bluetooth devices</p>
+</div>
+
+<!-- Filter & Sort Bar -->
+<div class="filter-bar">
+  <div class="filter-bar__group">
+    <button class="filter-bar__btn {% if current_filter == 'all' %}filter-bar__btn--active{% endif %}"
+            hx-get="/api/devices?filter=all"
+            hx-target="#device-list"
+            hx-push-url="/devices?filter=all">
+      All
+    </button>
+    <button class="filter-bar__btn {% if current_filter == 'paired' %}filter-bar__btn--active{% endif %}"
+            hx-get="/api/devices?filter=paired"
+            hx-target="#device-list"
+            hx-push-url="/devices?filter=paired">
+      Paired
+    </button>
+    <button class="filter-bar__btn {% if current_filter == 'connected' %}filter-bar__btn--active{% endif %}"
+            hx-get="/api/devices?filter=connected"
+            hx-target="#device-list"
+            hx-push-url="/devices?filter=connected">
+      Connected
+    </button>
+    <button class="filter-bar__btn {% if current_filter == 'favorites' %}filter-bar__btn--active{% endif %}"
+            hx-get="/api/devices?filter=favorites"
+            hx-target="#device-list"
+            hx-push-url="/devices?filter=favorites">
+      Favorites
+    </button>
+  </div>
+
+  <div class="filter-bar__spacer"></div>
+
+  <div class="flex items-center gap-2">
+    <label for="sort-select" class="form-label" style="margin-bottom: 0;">Sort:</label>
+    <select id="sort-select"
+            class="form-select"
+            style="width: auto;"
+            hx-get="/api/devices"
+            hx-target="#device-list"
+            hx-include="[name='filter']"
+            name="sort">
+      <option value="last_seen" {% if current_sort == 'last_seen' %}selected{% endif %}>Last Seen</option>
+      <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Name</option>
+      <option value="last_connected" {% if current_sort == 'last_connected' %}selected{% endif %}>Last Connected</option>
+    </select>
+    <input type="hidden" name="filter" value="{{ current_filter | default('all') }}">
+  </div>
+</div>
+
+<!-- Device List -->
+<div id="device-list">
+  {% if devices %}
+  <div class="device-grid">
+    {% for device in devices %}
+      {% include "partials/device_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state__icon">&#128225;</div>
+    <div class="empty-state__title">No devices found</div>
+    <p class="empty-state__text">
+      Try scanning for nearby devices from the
+      <a href="/">Dashboard</a>.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

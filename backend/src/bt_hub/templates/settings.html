@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Bluetooth Web UI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Settings</h1>
+  <p>Configure the Bluetooth Web UI</p>
+</div>
+
+<form x-data="{
+        scanDuration: {{ settings.scan_duration_seconds | default(10) }},
+        autoConnect: {{ 'true' if settings.auto_connect_favorites else 'false' }},
+        currentTheme: '{{ settings.theme | default('light') }}',
+        saving: false,
+        saved: false,
+        async save() {
+          this.saving = true;
+          this.saved = false;
+          const body = {
+            theme: this.currentTheme,
+            scan_duration_seconds: this.scanDuration,
+            auto_connect_favorites: this.autoConnect
+          };
+          try {
+            const res = await fetch('/api/settings', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+            if (res.ok) {
+              this.saved = true;
+              setTimeout(() => this.saved = false, 2000);
+            }
+          } finally {
+            this.saving = false;
+          }
+        }
+      }"
+      @submit.prevent="save()"
+      class="settings-form">
+
+  <!-- Theme -->
+  <div class="card settings-section">
+    <div class="card__header">
+      <h2>Appearance</h2>
+    </div>
+    <div class="card__body">
+      <div class="form-group">
+        <label class="form-label">Theme</label>
+        <div class="theme-selector">
+          <button type="button"
+                  class="theme-option"
+                  :class="{ 'theme-option--active': currentTheme === 'light' }"
+                  @click="currentTheme = 'light'; $store.theme.set('light')">
+            <span class="theme-option__icon">&#9728;&#65039;</span>
+            <span class="theme-option__label">Light</span>
+          </button>
+          <button type="button"
+                  class="theme-option"
+                  :class="{ 'theme-option--active': currentTheme === 'dark' }"
+                  @click="currentTheme = 'dark'; $store.theme.set('dark')">
+            <span class="theme-option__icon">&#127769;</span>
+            <span class="theme-option__label">Dark</span>
+          </button>
+          <button type="button"
+                  class="theme-option"
+                  :class="{ 'theme-option--active': currentTheme === 'auto' }"
+                  @click="currentTheme = 'auto'; $store.theme.set('auto')">
+            <span class="theme-option__icon">&#128308;</span>
+            <span class="theme-option__label">Auto</span>
+          </button>
+        </div>
+        <input type="hidden" name="theme" :value="currentTheme">
+      </div>
+    </div>
+  </div>
+
+  <!-- Scanning -->
+  <div class="card settings-section">
+    <div class="card__header">
+      <h2>Scanning</h2>
+    </div>
+    <div class="card__body">
+      <div class="form-group">
+        <label class="form-label" for="scan-duration">Scan Duration</label>
+        <div class="range-display">
+          <input type="range"
+                 id="scan-duration"
+                 name="scan_duration_seconds"
+                 class="form-range"
+                 min="5"
+                 max="60"
+                 step="5"
+                 x-model.number="scanDuration">
+          <span class="range-display__value" x-text="scanDuration + 's'"></span>
+        </div>
+        <p class="form-hint">How long to scan for nearby devices (5-60 seconds).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection -->
+  <div class="card settings-section">
+    <div class="card__header">
+      <h2>Connection</h2>
+    </div>
+    <div class="card__body">
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox"
+                 name="auto_connect_favorites"
+                 x-model="autoConnect">
+          <span>Auto-connect favorite devices</span>
+        </label>
+        <p class="form-hint">Automatically connect to favorite devices when they come in range.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div class="flex justify-between items-center mt-4">
+    <button type="submit" class="btn btn--primary" :disabled="saving">
+      <span x-show="!saving && !saved">Save Settings</span>
+      <span x-show="saving"><span class="spinner spinner--sm"></span> Saving...</span>
+      <span x-show="saved">Saved!</span>
+    </button>
+  </div>
+
+</form>
+{% endblock %}

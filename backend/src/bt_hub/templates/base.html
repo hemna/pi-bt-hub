@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en"
+      x-data
+      :data-theme="$store.theme.current">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Bluetooth Web UI{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/main.css">
+  <script src="/static/js/htmx.min.js" defer></script>
+  <script src="/static/js/htmx-ws.js" defer></script>
+  <script src="/static/js/alpine.min.js" defer></script>
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.store('theme', {
+        current: localStorage.getItem('bt-theme') || 'light',
+
+        init() {
+          this.apply();
+        },
+
+        set(theme) {
+          this.current = theme;
+          localStorage.setItem('bt-theme', theme);
+          this.apply();
+        },
+
+        toggle() {
+          const order = ['light', 'dark', 'auto'];
+          const idx = order.indexOf(this.current);
+          this.set(order[(idx + 1) % order.length]);
+        },
+
+        apply() {
+          document.documentElement.setAttribute('data-theme', this.current);
+        }
+      });
+
+      Alpine.store('toasts', {
+        items: [],
+        _nextId: 0,
+
+        add(message, type = 'info') {
+          const id = this._nextId++;
+          this.items.push({ id, message, type, leaving: false });
+          setTimeout(() => this.dismiss(id), 5000);
+        },
+
+        dismiss(id) {
+          const toast = this.items.find(t => t.id === id);
+          if (toast) {
+            toast.leaving = true;
+            setTimeout(() => {
+              this.items = this.items.filter(t => t.id !== id);
+            }, 250);
+          }
+        },
+
+        success(msg) { this.add(msg, 'success'); },
+        error(msg)   { this.add(msg, 'error'); },
+        warning(msg) { this.add(msg, 'warning'); },
+        info(msg)    { this.add(msg, 'info'); }
+      });
+    });
+
+    /* Listen for HTMX events and show toasts on errors */
+    document.addEventListener('htmx:responseError', (e) => {
+      const store = Alpine.store('toasts');
+      if (store) {
+        store.error('Request failed. Please try again.');
+      }
+    });
+
+    /* Dispatch Alpine event from WebSocket messages */
+    document.addEventListener('htmx:wsAfterMessage', (e) => {
+      try {
+        const data = JSON.parse(e.detail.message);
+        window.dispatchEvent(new CustomEvent('bt-ws-message', { detail: data }));
+
+        /* Auto-show toasts for certain event types */
+        const store = Alpine.store('toasts');
+        if (store && data.type === 'device_connected') {
+          store.success('Device connected: ' + (data.device_name || data.mac_address));
+        } else if (store && data.type === 'device_disconnected') {
+          store.info('Device disconnected: ' + (data.device_name || data.mac_address));
+        } else if (store && data.type === 'error') {
+          store.error(data.message || 'An error occurred');
+        }
+      } catch (err) {
+        /* not JSON, ignore */
+      }
+    });
+  </script>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav" x-data="{ menuOpen: false }">
+    <a href="/" class="nav__brand">BT Web UI</a>
+
+    <button class="nav__hamburger"
+            @click="menuOpen = !menuOpen"
+            aria-label="Toggle menu">
+      <span x-text="menuOpen ? '&times;' : '&#9776;'">&#9776;</span>
+    </button>
+
+    <ul class="nav__links" :class="{ 'nav__links--open': menuOpen }" @click="menuOpen = false">
+      <li>
+        <a href="/"
+           class="nav__link {% if request.url.path == '/' %}nav__link--active{% endif %}">
+          Dashboard
+        </a>
+      </li>
+      <li>
+        <a href="/devices"
+           class="nav__link {% if request.url.path.startswith('/devices') %}nav__link--active{% endif %}">
+          Devices
+        </a>
+      </li>
+      <li>
+        <a href="/settings"
+           class="nav__link {% if request.url.path == '/settings' %}nav__link--active{% endif %}">
+          Settings
+        </a>
+      </li>
+      <li>
+        <a href="/logs"
+           class="nav__link {% if request.url.path == '/logs' %}nav__link--active{% endif %}">
+          Logs
+        </a>
+      </li>
+      {% if bridge_configured %}
+      <li>
+        <a :href="'http://' + window.location.hostname + ':' + {{ bridge_port }}"
+           class="nav__link"
+           target="_blank"
+           rel="noopener">
+          Bridge &#8599;
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+
+    <div class="nav__actions">
+      <button class="btn btn--ghost btn--icon"
+              @click="$store.theme.toggle()"
+              :title="'Theme: ' + $store.theme.current"
+              aria-label="Toggle theme">
+        <span x-show="$store.theme.current === 'dark'">&#9728;&#65039;</span>
+        <span x-show="$store.theme.current === 'light'">&#127769;</span>
+        <span x-show="$store.theme.current === 'auto'">&#128308;</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content with WebSocket connection -->
+  <div hx-ext="ws" ws-connect="/ws">
+    <main class="container">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container"
+       x-data
+       x-show="$store.toasts.items.length > 0">
+    <template x-for="toast in $store.toasts.items" :key="toast.id">
+      <div class="toast"
+           :class="{
+             'toast--success': toast.type === 'success',
+             'toast--error': toast.type === 'error',
+             'toast--info': toast.type === 'info',
+             'toast--warning': toast.type === 'warning',
+             'toast--leaving': toast.leaving
+           }">
+        <span class="toast__icon">
+          <template x-if="toast.type === 'success'">&#10003;</template>
+          <template x-if="toast.type === 'error'">&#10007;</template>
+          <template x-if="toast.type === 'info'">&#8505;</template>
+          <template x-if="toast.type === 'warning'">&#9888;</template>
+        </span>
+        <span class="toast__content" x-text="toast.message"></span>
+        <button class="toast__close"
+                @click="$store.toasts.dismiss(toast.id)"
+                aria-label="Dismiss">&times;</button>
+      </div>
+    </template>
+  </div>
+
+</body>
+</html>

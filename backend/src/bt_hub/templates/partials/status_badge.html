@@ -1,0 +1,16 @@
+{# Status badge partial - displays connection state as a colored badge #}
+{# Expects: device.connection_state (str from ConnectionState enum) #}
+
+{% set state = device.connection_state | default('disconnected') %}
+
+{% if state == 'connected' %}
+<span class="badge badge--connected">Connected</span>
+{% elif state == 'connecting' %}
+<span class="badge badge--connecting">Connecting</span>
+{% elif state == 'pairing' %}
+<span class="badge badge--pairing">Pairing</span>
+{% elif state == 'error' %}
+<span class="badge badge--error">Error</span>
+{% else %}
+<span class="badge badge--disconnected">Disconnected</span>
+{% endif %}
