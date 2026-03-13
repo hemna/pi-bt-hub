@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}TNC Devices - Pi BT Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>TNC Devices</h1>
+</div>
+
+<div class="card">
+    <div class="card__header">
+        <h3>Known TNC Radios</h3>
+        <button class="btn btn--primary btn--sm" onclick="showAddForm()">Add TNC</button>
+    </div>
+    <div class="card__body">
+        <div id="tnc-list">
+            <div class="loading-overlay">
+                <div class="spinner spinner--sm"></div>
+                Loading...
+            </div>
+        </div>
+        <div id="tnc-empty" class="hidden">
+            <div class="empty-state" style="padding: 1.5rem;">
+                <div class="empty-state__text">No TNC devices configured.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Form -->
+<div id="tnc-form-modal" style="display: none;" class="card mt-4">
+    <div class="card__header">
+        <h3 id="tnc-form-title">Add TNC Device</h3>
+    </div>
+    <div class="card__body">
+        <form id="tnc-form" onsubmit="saveTNC(event)">
+            <div class="form-group">
+                <label class="form-label">Bluetooth Address</label>
+                <input type="text" id="tnc-address" class="form-input"
+                       placeholder="AA:BB:CC:DD:EE:FF" required
+                       pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}">
+                <p class="form-hint">Enter the Bluetooth MAC address of the TNC device.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" id="tnc-name" class="form-input"
+                       placeholder="My TNC Radio" maxlength="50">
+                <p class="form-hint">Optional friendly name for this device.</p>
+            </div>
+            <div class="flex gap-4">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">RFCOMM Channel</label>
+                    <select id="tnc-channel" class="form-select">
+                        {% for ch in range(1, 31) %}
+                        <option value="{{ ch }}" {{ 'selected' if ch == 1 }}>{{ ch }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Protocol</label>
+                    <select id="tnc-protocol" class="form-select">
+                        <option value="kiss">KISS</option>
+                        <option value="hdlc">HDLC</option>
+                        <option value="auto">Auto-detect</option>
+                    </select>
+                </div>
+            </div>
+            <div class="action-group">
+                <button type="submit" class="btn btn--primary">Save</button>
+                <button type="button" class="btn btn--secondary" onclick="hideForm()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var editingAddress = null;
+
+async function loadTNCs() {
+    var list = document.getElementById('tnc-list');
+    var empty = document.getElementById('tnc-empty');
+
+    try {
+        var resp = await fetch('/api/bridge/tnc');
+        var data = await resp.json();
+
+        if (data.offline) {
+            list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">Bridge is offline</p>';
+            return;
+        }
+
+        var devices = data.devices || [];
+        if (devices.length === 0) {
+            list.classList.add('hidden');
+            empty.classList.remove('hidden');
+            return;
+        }
+
+        empty.classList.add('hidden');
+        list.classList.remove('hidden');
+
+        var html = '';
+        devices.forEach(function(d) {
+            html += '<div class="device-row">';
+            html += '  <div class="device-row__info">';
+            html += '    <div>';
+            html += '      <span class="device-row__name">' + escapeHtml(d.display_name || d.bluetooth_name || d.address) + '</span>';
+            if (d.is_current) {
+                if (d.is_connected) {
+                    html += ' <span class="badge badge--connected">Connected</span>';
+                } else {
+                    html += ' <span class="badge badge--on">Selected</span>';
+                }
+            }
+            html += '      <div class="device-row__mac">' + escapeHtml(d.address) + '</div>';
+            var protoLabel = d.protocol === 'kiss' ? 'KISS' : (d.protocol === 'hdlc' ? 'HDLC' : 'Auto');
+            html += '      <div style="font-size: 0.75rem; color: var(--text-secondary);">CH ' + d.rfcomm_channel + ' &middot; ' + protoLabel + '</div>';
+            html += '    </div>';
+            html += '  </div>';
+            html += '  <div class="device-row__actions">';
+            if (!d.is_current) {
+                html += '    <button class="btn btn--primary btn--sm" onclick="selectTNC(\'' + escapeHtml(d.address) + '\')">Select</button>';
+            }
+            if (d.is_current && !d.is_connected) {
+                html += '    <button class="btn btn--primary btn--sm" onclick="connectTNC(\'' + escapeHtml(d.address) + '\')">Connect</button>';
+            }
+            html += '    <button class="btn btn--secondary btn--sm" onclick="editTNC(\'' + escapeHtml(d.address) + '\')">Edit</button>';
+            if (!d.is_current) {
+                html += '    <button class="btn btn--danger btn--sm" onclick="removeTNC(\'' + escapeHtml(d.address) + '\', ' + JSON.stringify(d.display_name || d.address) + ')">Remove</button>';
+            }
+            html += '  </div>';
+            html += '</div>';
+        });
+        list.innerHTML = html;
+    } catch (err) {
+        list.innerHTML = '<p style="color: var(--error); text-align: center; padding: 1rem;">Failed to load TNC devices.</p>';
+        console.error('TNC load error:', err);
+    }
+}
+
+async function selectTNC(addr) {
+    try {
+        var resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(addr) + '/select', { method: 'POST' });
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+            Alpine.store('toasts').success('TNC selected');
+            loadTNCs();
+        } else {
+            Alpine.store('toasts').error('Failed to select: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error selecting TNC: ' + err.message);
+    }
+}
+
+async function connectTNC(addr) {
+    try {
+        var resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(addr) + '/connect', { method: 'POST' });
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+            Alpine.store('toasts').success('Connecting to TNC...');
+            loadTNCs();
+            setTimeout(loadTNCs, 2000);
+            setTimeout(loadTNCs, 5000);
+        } else {
+            Alpine.store('toasts').error('Failed to connect: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error connecting: ' + err.message);
+    }
+}
+
+async function removeTNC(addr, displayName) {
+    if (!confirm('Remove "' + displayName + '"? This cannot be undone.')) return;
+    try {
+        var resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(addr), { method: 'DELETE' });
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+            Alpine.store('toasts').success('TNC removed');
+            loadTNCs();
+        } else {
+            Alpine.store('toasts').error('Failed to remove: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error removing TNC: ' + err.message);
+    }
+}
+
+function showAddForm() {
+    editingAddress = null;
+    document.getElementById('tnc-form-title').textContent = 'Add TNC Device';
+    document.getElementById('tnc-address').value = '';
+    document.getElementById('tnc-address').disabled = false;
+    document.getElementById('tnc-name').value = '';
+    document.getElementById('tnc-channel').value = '1';
+    document.getElementById('tnc-protocol').value = 'kiss';
+    document.getElementById('tnc-form-modal').style.display = 'block';
+}
+
+async function editTNC(addr) {
+    try {
+        var resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(addr));
+        var device = await resp.json();
+        if (device.offline) {
+            Alpine.store('toasts').warning('Bridge is offline');
+            return;
+        }
+
+        editingAddress = addr;
+        document.getElementById('tnc-form-title').textContent = 'Edit TNC Device';
+        document.getElementById('tnc-address').value = device.address || addr;
+        document.getElementById('tnc-address').disabled = true;
+        document.getElementById('tnc-name').value = device.friendly_name || device.bluetooth_name || '';
+        document.getElementById('tnc-channel').value = device.rfcomm_channel || 1;
+        document.getElementById('tnc-protocol').value = device.protocol || 'kiss';
+        document.getElementById('tnc-form-modal').style.display = 'block';
+    } catch (err) {
+        Alpine.store('toasts').error('Failed to load device: ' + err.message);
+    }
+}
+
+function hideForm() {
+    document.getElementById('tnc-form-modal').style.display = 'none';
+    editingAddress = null;
+}
+
+async function saveTNC(event) {
+    event.preventDefault();
+    var payload = {
+        address: document.getElementById('tnc-address').value.trim().toUpperCase(),
+        bluetooth_name: document.getElementById('tnc-name').value.trim() || null,
+        rfcomm_channel: parseInt(document.getElementById('tnc-channel').value, 10),
+        protocol: document.getElementById('tnc-protocol').value,
+    };
+
+    try {
+        var url, method;
+        if (editingAddress) {
+            url = '/api/bridge/tnc/' + encodeURIComponent(editingAddress);
+            method = 'PUT';
+        } else {
+            url = '/api/bridge/tnc';
+            method = 'POST';
+        }
+
+        var resp = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        var data = await resp.json();
+
+        if (resp.ok && (data.success !== false)) {
+            hideForm();
+            loadTNCs();
+            Alpine.store('toasts').success(editingAddress ? 'TNC updated' : 'TNC added');
+        } else {
+            Alpine.store('toasts').error('Failed to save: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error saving TNC: ' + err.message);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', loadTNCs);
+</script>
+{% endblock %}

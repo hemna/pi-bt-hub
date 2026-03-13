@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+
+{% block title %}Bridge Status - Pi BT Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Bridge Status</h1>
+    {% if offline %}
+    <p>Bridge daemon is not reachable.</p>
+    {% endif %}
+</div>
+
+{% if offline %}
+<div class="card">
+    <div class="card__body">
+        <div class="empty-state">
+            <div class="empty-state__icon">&#128268;</div>
+            <div class="empty-state__title">Bridge Offline</div>
+            <div class="empty-state__text">
+                The bridge daemon is not responding. Check that the service is running.
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<div class="grid grid-cols-2 gap-4" id="connection-grid">
+    <!-- BLE Connection -->
+    <div class="card" id="ble-card">
+        <div class="card__header">
+            <h3>BLE (Phone)</h3>
+            <span class="badge badge--{{ 'connected' if status.ble.state.value == 'connected' else ('connecting' if status.ble.state.value == 'advertising' else 'disconnected') }}" id="ble-badge">
+                {{ status.ble.state.value | title }}
+            </span>
+        </div>
+        <div class="card__body" id="ble-details">
+            {% if status.ble.state.value == 'connected' %}
+                <dl class="info-grid">
+                    <dt>Device</dt>
+                    <dd>{{ status.ble.device_name or 'Unknown' }}</dd>
+                    {% if status.ble.device_address %}
+                    <dt>Address</dt>
+                    <dd><code>{{ status.ble.device_address }}</code></dd>
+                    {% endif %}
+                    {% if status.ble.connected_at %}
+                    <dt>Connected</dt>
+                    <dd>{{ status.ble.connected_at }}</dd>
+                    {% endif %}
+                </dl>
+            {% else %}
+                <p style="color: var(--text-secondary);">Waiting for phone to connect...</p>
+                {% if status.ble.advertising %}
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">
+                    Advertising as "{{ status.device_name or 'Pi BT Bridge' }}"
+                </p>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Classic Connection -->
+    <div class="card" id="classic-card">
+        <div class="card__header">
+            <h3>Classic (TNC)</h3>
+            <span class="badge badge--{{ 'connected' if status.classic.state.value == 'connected' else ('connecting' if status.classic.state.value == 'connecting' else ('error' if status.classic.state.value == 'error' else 'disconnected')) }}" id="classic-badge">
+                {{ status.classic.state.value | title }}
+            </span>
+        </div>
+        <div class="card__body" id="classic-details">
+            {% if status.classic.state.value == 'connected' %}
+                <dl class="info-grid">
+                    <dt>Device</dt>
+                    <dd>{{ status.classic.target_name or 'TNC' }}</dd>
+                    <dt>Address</dt>
+                    <dd><code>{{ status.classic.target_address }}</code></dd>
+                    <dt>Channel</dt>
+                    <dd>RFCOMM {{ status.classic.rfcomm_channel }}</dd>
+                    {% if status.classic.connected_at %}
+                    <dt>Connected</dt>
+                    <dd>{{ status.classic.connected_at }}</dd>
+                    {% endif %}
+                </dl>
+            {% else %}
+                <dl class="info-grid">
+                    <dt>Target</dt>
+                    <dd><code>{{ status.classic.target_address }}</code></dd>
+                    <dt>Channel</dt>
+                    <dd>RFCOMM {{ status.classic.rfcomm_channel }}</dd>
+                </dl>
+                {% if status.classic.state.value == 'connecting' %}
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">Connecting...</p>
+                {% elif status.classic.state.value == 'error' %}
+                <p style="color: var(--error); margin-top: 0.5rem;">Connection failed</p>
+                {% else %}
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">Not connected</p>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- TCP KISS Server -->
+{% if status.tcp_kiss and status.tcp_kiss.enabled %}
+<div class="card mt-4" id="tcp-kiss-card">
+    <div class="card__header">
+        <h3>TCP KISS Server</h3>
+        {% if status.tcp_kiss.listening %}
+        <span class="badge badge--connected" id="tcp-badge">Listening</span>
+        {% else %}
+        <span class="badge badge--disconnected" id="tcp-badge">Stopped</span>
+        {% endif %}
+    </div>
+    <div class="card__body">
+        <dl class="info-grid">
+            <dt>Address</dt>
+            <dd><code>{{ status.tcp_kiss.host }}:{{ status.tcp_kiss.port }}</code></dd>
+            <dt>Clients</dt>
+            <dd><span id="tcp-client-count">{{ status.tcp_kiss.client_count }}</span> / {{ status.tcp_kiss.max_clients }}</dd>
+        </dl>
+        {% if status.tcp_kiss.clients %}
+        <div id="tcp-client-list" style="margin-top: 0.75rem;">
+            {% for client in status.tcp_kiss.clients %}
+            <div style="font-size: 0.8125rem; padding: 0.375rem 0; border-top: 1px solid var(--border);">
+                <code>{{ client.remote_address }}</code>
+                <span style="color: var(--text-secondary); margin-left: 0.5rem;">RX {{ client.bytes_rx }}B / TX {{ client.bytes_tx }}B</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p id="tcp-no-clients" style="color: var(--text-secondary); margin-top: 0.5rem; font-size: 0.875rem;">No clients connected</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Bridge Info -->
+<div class="card mt-4">
+    <div class="card__header"><h3>Bridge Info</h3></div>
+    <div class="card__body">
+        <dl class="info-grid">
+            <dt>Device Name</dt>
+            <dd>{{ status.device_name or 'Pi BT Bridge' }}</dd>
+            <dt>Uptime</dt>
+            <dd id="uptime">{{ "%.1f"|format(status.uptime_seconds) }}s</dd>
+            <dt>Started</dt>
+            <dd>{{ status.started_at }}</dd>
+            <dt>Version</dt>
+            <dd>{{ status.version }}</dd>
+        </dl>
+    </div>
+</div>
+
+<!-- Bridge Active Alert -->
+{% if status.ble.state.value == 'connected' and status.classic.state.value == 'connected' %}
+<div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--success);">
+    <div class="card__body" style="color: var(--success);">
+        Bridge is active! Packets are being forwarded between phone and TNC.
+        {% if status.tcp_kiss and status.tcp_kiss.enabled and status.tcp_kiss.client_count > 0 %}
+        TCP KISS: {{ status.tcp_kiss.client_count }} client{{ 's' if status.tcp_kiss.client_count != 1 }} also receiving data.
+        {% endif %}
+    </div>
+</div>
+{% elif status.ble.state.value != 'connected' and status.classic.state.value != 'connected' %}
+<div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--warning);">
+    <div class="card__body" style="color: var(--warning);">
+        Both connections are inactive. Connect a phone via BLE and ensure TNC is paired.
+    </div>
+</div>
+{% endif %}
+
+<!-- TNC History -->
+<div class="card mt-4">
+    <div class="card__header">
+        <h3>Known TNCs</h3>
+        <a href="/bridge/tnc" class="btn btn--sm btn--secondary">Manage</a>
+    </div>
+    <div class="card__body">
+        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.75rem;">
+            Previously paired TNC radios. Select one to connect.
+        </p>
+        <div id="tnc-history-list">
+            <div class="loading-overlay">
+                <div class="spinner spinner--sm"></div>
+                Loading...
+            </div>
+        </div>
+        <div id="tnc-history-empty" class="hidden">
+            <div class="empty-state" style="padding: 1.5rem;">
+                <div class="empty-state__text">No TNC devices in history yet.</div>
+            </div>
+        </div>
+        <!-- Inline edit overlay -->
+        <div id="tnc-edit-overlay" class="hidden" style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--border-radius); padding: 1rem; margin-top: 0.75rem;">
+            <h4 style="margin-bottom: 0.75rem; font-weight: 600;">Edit TNC Settings</h4>
+            <div class="form-group">
+                <label class="form-label" for="edit-friendly-name">Friendly Name</label>
+                <input type="text" id="edit-friendly-name" class="form-input" maxlength="50" placeholder="e.g. Base Station, Mobile Rig">
+                <p class="form-hint">Leave empty and save to use the Bluetooth name instead.</p>
+            </div>
+            <div class="flex gap-4">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="edit-rfcomm-channel">RFCOMM Channel</label>
+                    <select id="edit-rfcomm-channel" class="form-select">
+                        {% for ch in range(1, 31) %}
+                        <option value="{{ ch }}">{{ ch }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="edit-protocol">Protocol</label>
+                    <select id="edit-protocol" class="form-select">
+                        <option value="auto">Auto-detect</option>
+                        <option value="kiss">KISS (0xC0)</option>
+                        <option value="hdlc">HDLC (0x7E)</option>
+                    </select>
+                </div>
+            </div>
+            <input type="hidden" id="edit-address">
+            <div class="action-group">
+                <button class="btn btn--primary btn--sm" onclick="saveEdit()">Save</button>
+                <button class="btn btn--secondary btn--sm" onclick="cancelEdit()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not offline %}
+<script>
+// =========================================================
+// TNC History Management
+// =========================================================
+
+async function loadTNCHistory() {
+    const listEl = document.getElementById('tnc-history-list');
+    const emptyEl = document.getElementById('tnc-history-empty');
+
+    try {
+        const resp = await fetch('/api/bridge/tnc');
+        if (!resp.ok) throw new Error('Failed to load TNC history');
+        const data = await resp.json();
+
+        if (data.offline) {
+            listEl.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem; text-align: center;">Bridge is offline</p>';
+            return;
+        }
+
+        const devices = data.devices || [];
+        if (devices.length === 0) {
+            listEl.classList.add('hidden');
+            emptyEl.classList.remove('hidden');
+            return;
+        }
+
+        emptyEl.classList.add('hidden');
+        listEl.classList.remove('hidden');
+
+        let html = '';
+        devices.forEach(function(device) {
+            const isCurrent = device.is_current;
+            const isPaired = device.is_paired;
+            const isConnected = device.is_connected;
+            const connState = device.connection_state;
+            const lastUsed = device.last_used
+                ? formatRelativeTime(device.last_used)
+                : 'Never used';
+
+            html += '<div class="device-row">';
+            html += '  <div class="device-row__info">';
+            html += '    <div>';
+            html += '      <span class="device-row__name">' + escapeHtml(device.display_name) + '</span>';
+
+            if (isCurrent) {
+                if (isConnected) {
+                    html += ' <span class="badge badge--connected">Connected</span>';
+                } else if (connState === 'connecting') {
+                    html += ' <span class="badge badge--connecting">Connecting</span>';
+                } else if (connState === 'error') {
+                    html += ' <span class="badge badge--error">Error</span>';
+                } else {
+                    html += ' <span class="badge badge--disconnected">Disconnected</span>';
+                }
+            }
+            if (!isPaired) {
+                html += ' <span class="badge badge--error">Not Paired</span>';
+            }
+            html += '      <div class="device-row__mac">' + escapeHtml(device.address);
+            html += '        <span style="color: var(--text-secondary); font-size: 0.75rem; margin-left: 0.5rem;">CH ' + device.rfcomm_channel + '</span>';
+            var protoLabel = device.protocol === 'kiss' ? 'KISS' : (device.protocol === 'hdlc' ? 'HDLC' : 'Auto');
+            html += '        <span style="color: var(--text-secondary); font-size: 0.75rem; margin-left: 0.25rem;">' + protoLabel + '</span>';
+            html += '      </div>';
+
+            if (isCurrent && device.last_error && !isConnected) {
+                html += '      <div style="font-size: 0.75rem; color: var(--error);">' + escapeHtml(device.last_error);
+                if (device.reconnect_attempts > 0) {
+                    html += ' <span style="color: var(--text-secondary);">(retry #' + device.reconnect_attempts + ')</span>';
+                }
+                html += '</div>';
+            }
+
+            html += '      <div style="font-size: 0.75rem; color: var(--text-secondary);">' + lastUsed + '</div>';
+            html += '    </div>';
+            html += '  </div>';
+            html += '  <div class="device-row__actions">';
+
+            if (isCurrent && !isConnected && isPaired) {
+                var connectLabel = connState === 'connecting' ? 'Connecting...' : 'Connect';
+                var connectDisabled = connState === 'connecting' ? ' disabled' : '';
+                html += '    <button class="btn btn--primary btn--sm"' + connectDisabled + ' onclick="connectTNC(\'' + escapeHtml(device.address) + '\')">' + connectLabel + '</button>';
+            }
+
+            if (!isCurrent) {
+                html += '    <button class="btn btn--primary btn--sm" onclick="selectTNC(\'' + escapeHtml(device.address) + '\')"' + (isPaired ? '' : ' disabled title="Pair this device first"') + '>Select</button>';
+            }
+            html += '    <button class="btn btn--secondary btn--sm" onclick="editTNC(\'' + escapeHtml(device.address) + '\', ' + JSON.stringify(device.friendly_name || '') + ', ' + device.rfcomm_channel + ', ' + JSON.stringify(device.protocol || 'auto') + ')">Edit</button>';
+            if (!isCurrent) {
+                html += '    <button class="btn btn--danger btn--sm" onclick="removeTNC(\'' + escapeHtml(device.address) + '\', ' + JSON.stringify(device.display_name) + ')">Remove</button>';
+            }
+            html += '  </div>';
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+    } catch (err) {
+        listEl.innerHTML = '<p style="color: var(--error); text-align: center; padding: 1rem;">Failed to load TNC history.</p>';
+        console.error('TNC history load error:', err);
+    }
+}
+
+async function selectTNC(address) {
+    if (!confirm('Switch to this TNC? The bridge will attempt to connect.')) return;
+    try {
+        const resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(address) + '/select', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            location.reload();
+        } else {
+            Alpine.store('toasts').error('Failed to select TNC: ' + (data.message || 'Unknown error'));
+            loadTNCHistory();
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error selecting TNC: ' + err.message);
+    }
+}
+
+async function connectTNC(address) {
+    try {
+        const resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(address) + '/connect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            loadTNCHistory();
+            setTimeout(loadTNCHistory, 2000);
+            setTimeout(loadTNCHistory, 5000);
+        } else {
+            Alpine.store('toasts').error('Failed to connect: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error connecting to TNC: ' + err.message);
+    }
+}
+
+function editTNC(address, currentName, currentChannel, currentProtocol) {
+    document.getElementById('edit-address').value = address;
+    document.getElementById('edit-friendly-name').value = currentName || '';
+    document.getElementById('edit-rfcomm-channel').value = currentChannel || 2;
+    document.getElementById('edit-protocol').value = currentProtocol || 'auto';
+    document.getElementById('tnc-edit-overlay').classList.remove('hidden');
+    document.getElementById('edit-friendly-name').focus();
+}
+
+async function saveEdit() {
+    const address = document.getElementById('edit-address').value;
+    const nameInput = document.getElementById('edit-friendly-name').value.trim();
+    const channel = parseInt(document.getElementById('edit-rfcomm-channel').value, 10);
+    const protocol = document.getElementById('edit-protocol').value;
+    const friendlyName = nameInput === '' ? null : nameInput;
+
+    try {
+        const resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(address), {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                friendly_name: friendlyName,
+                rfcomm_channel: channel,
+                protocol: protocol,
+            }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            cancelEdit();
+            loadTNCHistory();
+            Alpine.store('toasts').success('TNC settings updated');
+        } else {
+            Alpine.store('toasts').error('Failed to update: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error updating TNC: ' + err.message);
+    }
+}
+
+function cancelEdit() {
+    document.getElementById('tnc-edit-overlay').classList.add('hidden');
+}
+
+async function removeTNC(address, displayName) {
+    if (!confirm('Remove "' + displayName + '" from history? This cannot be undone.')) return;
+    try {
+        const resp = await fetch('/api/bridge/tnc/' + encodeURIComponent(address), {
+            method: 'DELETE',
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            loadTNCHistory();
+            Alpine.store('toasts').success('TNC removed');
+        } else {
+            Alpine.store('toasts').error('Failed to remove: ' + (data.message || 'Unknown error'));
+        }
+    } catch (err) {
+        Alpine.store('toasts').error('Error removing TNC: ' + err.message);
+    }
+}
+
+function formatRelativeTime(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+
+    if (diffSec < 60) return 'Just now';
+    if (diffMin < 60) return diffMin + ' min ago';
+    if (diffHr < 24) return diffHr + ' hr ago';
+    if (diffDay < 7) return diffDay + ' day' + (diffDay > 1 ? 's' : '') + ' ago';
+    return date.toLocaleDateString();
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', loadTNCHistory);
+
+// =========================================================
+// SSE real-time updates
+// =========================================================
+
+if (typeof EventSource !== 'undefined') {
+    const evtSource = new EventSource('/api/bridge/status/stream');
+
+    evtSource.addEventListener('status', function(event) {
+        try {
+            const status = JSON.parse(event.data);
+            updateStatusUI(status);
+        } catch (e) {
+            console.error('Failed to parse SSE status:', e);
+        }
+    });
+
+    evtSource.addEventListener('error', function() {
+        console.log('SSE connection error, will retry...');
+    });
+}
+
+var _lastClassicState = null;
+
+function updateStatusUI(status) {
+    // Update BLE badge
+    var bleBadge = document.getElementById('ble-badge');
+    if (bleBadge) {
+        var bleState = status.ble.state;
+        var bleBadgeClass = bleState === 'connected' ? 'connected' : (bleState === 'advertising' ? 'connecting' : 'disconnected');
+        bleBadge.className = 'badge badge--' + bleBadgeClass;
+        bleBadge.textContent = bleState.charAt(0).toUpperCase() + bleState.slice(1);
+    }
+
+    // Rebuild BLE details
+    var bleDetails = document.getElementById('ble-details');
+    if (bleDetails) {
+        var bleConnected = status.ble.state === 'connected';
+        if (bleConnected) {
+            var html = '<dl class="info-grid">';
+            html += '<dt>Device</dt><dd>' + escapeHtml(status.ble.device_name || 'Unknown') + '</dd>';
+            if (status.ble.device_address) {
+                html += '<dt>Address</dt><dd><code>' + escapeHtml(status.ble.device_address) + '</code></dd>';
+            }
+            if (status.ble.connected_at) {
+                html += '<dt>Connected</dt><dd>' + escapeHtml(status.ble.connected_at) + '</dd>';
+            }
+            html += '</dl>';
+            bleDetails.innerHTML = html;
+        } else {
+            var h = '<p style="color: var(--text-secondary);">Waiting for phone to connect...</p>';
+            if (status.ble.advertising) {
+                h += '<p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">Advertising</p>';
+            }
+            bleDetails.innerHTML = h;
+        }
+    }
+
+    // Update Classic badge
+    var classicBadge = document.getElementById('classic-badge');
+    if (classicBadge) {
+        var cState = status.classic.state;
+        var cBadgeClass = cState === 'connected' ? 'connected' : (cState === 'connecting' ? 'connecting' : (cState === 'error' ? 'error' : 'disconnected'));
+        classicBadge.className = 'badge badge--' + cBadgeClass;
+        classicBadge.textContent = cState.charAt(0).toUpperCase() + cState.slice(1);
+    }
+
+    // Rebuild Classic details
+    var classicDetails = document.getElementById('classic-details');
+    if (classicDetails) {
+        var classicConnected = status.classic.state === 'connected';
+        var cHtml = '';
+        if (classicConnected) {
+            cHtml = '<dl class="info-grid">';
+            cHtml += '<dt>Device</dt><dd>' + escapeHtml(status.classic.target_name || 'TNC') + '</dd>';
+            cHtml += '<dt>Address</dt><dd><code>' + escapeHtml(status.classic.target_address) + '</code></dd>';
+            cHtml += '<dt>Channel</dt><dd>RFCOMM ' + status.classic.rfcomm_channel + '</dd>';
+            if (status.classic.connected_at) {
+                cHtml += '<dt>Connected</dt><dd>' + escapeHtml(status.classic.connected_at) + '</dd>';
+            }
+            cHtml += '</dl>';
+        } else {
+            cHtml = '<dl class="info-grid">';
+            cHtml += '<dt>Target</dt><dd><code>' + escapeHtml(status.classic.target_address) + '</code></dd>';
+            cHtml += '<dt>Channel</dt><dd>RFCOMM ' + status.classic.rfcomm_channel + '</dd>';
+            cHtml += '</dl>';
+            if (status.classic.state === 'connecting') {
+                cHtml += '<p style="color: var(--text-secondary); margin-top: 0.5rem;">Connecting...</p>';
+            } else if (status.classic.state === 'error') {
+                cHtml += '<p style="color: var(--error); margin-top: 0.5rem;">Connection failed</p>';
+            } else {
+                cHtml += '<p style="color: var(--text-secondary); margin-top: 0.5rem;">Not connected</p>';
+            }
+        }
+        classicDetails.innerHTML = cHtml;
+    }
+
+    // Update TCP KISS card
+    var tcpCard = document.getElementById('tcp-kiss-card');
+    if (tcpCard && status.tcp_kiss) {
+        var tcpBadge = document.getElementById('tcp-badge');
+        if (tcpBadge) {
+            if (status.tcp_kiss.listening) {
+                tcpBadge.className = 'badge badge--connected';
+                tcpBadge.textContent = 'Listening';
+            } else {
+                tcpBadge.className = 'badge badge--disconnected';
+                tcpBadge.textContent = 'Stopped';
+            }
+        }
+        var countEl = document.getElementById('tcp-client-count');
+        if (countEl) countEl.textContent = status.tcp_kiss.client_count;
+
+        var listEl = document.getElementById('tcp-client-list');
+        var noClientsEl = document.getElementById('tcp-no-clients');
+        if (status.tcp_kiss.clients && status.tcp_kiss.clients.length > 0) {
+            if (noClientsEl) noClientsEl.style.display = 'none';
+            var listHtml = '';
+            status.tcp_kiss.clients.forEach(function(c) {
+                listHtml += '<div style="font-size: 0.8125rem; padding: 0.375rem 0; border-top: 1px solid var(--border);">';
+                listHtml += '<code>' + escapeHtml(c.remote_address) + '</code>';
+                listHtml += ' <span style="color: var(--text-secondary); margin-left: 0.5rem;">RX ' + c.bytes_rx + 'B / TX ' + c.bytes_tx + 'B</span>';
+                listHtml += '</div>';
+            });
+            if (listEl) {
+                listEl.innerHTML = listHtml;
+            } else {
+                var newEl = document.createElement('div');
+                newEl.id = 'tcp-client-list';
+                newEl.style.marginTop = '0.75rem';
+                newEl.innerHTML = listHtml;
+                tcpCard.querySelector('.card__body').appendChild(newEl);
+            }
+        } else {
+            if (listEl) listEl.remove();
+            if (noClientsEl) {
+                noClientsEl.style.display = '';
+            }
+        }
+    }
+
+    // Refresh TNC list when classic state changes
+    if (status.classic.state !== _lastClassicState) {
+        _lastClassicState = status.classic.state;
+        loadTNCHistory();
+    }
+
+    // Update uptime
+    var uptimeEl = document.getElementById('uptime');
+    if (uptimeEl && status.uptime_seconds != null) {
+        uptimeEl.textContent = status.uptime_seconds.toFixed(1) + 's';
+    }
+}
+
+// Tick uptime every second
+setInterval(function() {
+    var uptimeEl = document.getElementById('uptime');
+    if (uptimeEl) {
+        var current = parseFloat(uptimeEl.textContent);
+        if (!isNaN(current)) {
+            uptimeEl.textContent = (current + 1).toFixed(1) + 's';
+        }
+    }
+}, 1000);
+</script>
+{% endif %}
+{% endblock %}

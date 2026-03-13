@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Bridge Statistics - Pi BT Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Bridge Statistics</h1>
+    {% if offline %}
+    <p>Bridge daemon is not reachable.</p>
+    {% endif %}
+</div>
+
+{% if offline %}
+<div class="card">
+    <div class="card__body">
+        <div class="empty-state">
+            <div class="empty-state__icon">&#128202;</div>
+            <div class="empty-state__title">Bridge Offline</div>
+            <div class="empty-state__text">
+                The bridge daemon is not responding. Statistics are unavailable.
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Packet Counters -->
+<div class="card mb-4">
+    <div class="card__header"><h3>Packet Counters</h3></div>
+    <div class="card__body">
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-card__value" id="frames-bridged">{{ stats.packets_tx }}</div>
+                <div class="stat-card__label">Frames Bridged</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__value" id="bytes-tx">{{ stats.bytes_tx }}</div>
+                <div class="stat-card__label">Bytes to TNC</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__value" id="bytes-rx">{{ stats.bytes_rx }}</div>
+                <div class="stat-card__label">Bytes from TNC</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card__value" id="errors" {% if stats.errors > 0 %}style="color: var(--error);"{% endif %}>{{ stats.errors }}</div>
+                <div class="stat-card__label">Errors</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Info -->
+<div class="card mb-4">
+    <div class="card__header"><h3>Connection Info</h3></div>
+    <div class="card__body">
+        <dl class="info-grid">
+            <dt>BLE Status</dt>
+            <dd>
+                <span class="badge badge--{{ 'connected' if status.ble.state.value == 'connected' else ('connecting' if status.ble.state.value == 'advertising' else 'disconnected') }}">
+                    {{ status.ble.state.value | title }}
+                </span>
+            </dd>
+            <dt>Classic Status</dt>
+            <dd>
+                <span class="badge badge--{{ 'connected' if status.classic.state.value == 'connected' else ('connecting' if status.classic.state.value == 'connecting' else ('error' if status.classic.state.value == 'error' else 'disconnected')) }}">
+                    {{ status.classic.state.value | title }}
+                </span>
+            </dd>
+            {% if status.tcp_kiss and status.tcp_kiss.enabled %}
+            <dt>TCP KISS</dt>
+            <dd>
+                {% if status.tcp_kiss.listening %}
+                <span class="badge badge--connected">Listening</span>
+                <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.8125rem;">
+                    :{{ status.tcp_kiss.port }} ({{ status.tcp_kiss.client_count }} client{{ 's' if status.tcp_kiss.client_count != 1 }})
+                </span>
+                {% else %}
+                <span class="badge badge--disconnected">Stopped</span>
+                {% endif %}
+            </dd>
+            {% endif %}
+            <dt>Uptime</dt>
+            <dd id="uptime">{{ "%.0f"|format(status.uptime_seconds) }}s</dd>
+            <dt>Started</dt>
+            <dd>{{ status.started_at }}</dd>
+        </dl>
+    </div>
+</div>
+
+<!-- Throughput -->
+<div class="card mb-4">
+    <div class="card__header"><h3>Throughput</h3></div>
+    <div class="card__body">
+        <dl class="info-grid">
+            <dt>Total Bytes</dt>
+            <dd id="total-bytes">{{ stats.bytes_tx + stats.bytes_rx }}</dd>
+            <dt>Avg Rate</dt>
+            <dd id="avg-rate">
+                {% if status.uptime_seconds > 0 %}
+                    {{ "%.1f"|format((stats.bytes_tx + stats.bytes_rx) / status.uptime_seconds) }} B/s
+                {% else %}
+                    0 B/s
+                {% endif %}
+            </dd>
+        </dl>
+    </div>
+</div>
+
+<div class="action-group mt-4">
+    <button class="btn btn--secondary" onclick="refreshStats()">Refresh</button>
+    <a href="/bridge" class="btn btn--secondary">Back to Status</a>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not offline %}
+<script>
+async function refreshStats() {
+    try {
+        const response = await fetch('/api/bridge/stats');
+        const data = await response.json();
+
+        if (data.offline) {
+            Alpine.store('toasts').warning('Bridge is offline');
+            return;
+        }
+
+        document.getElementById('frames-bridged').textContent = data.packets_tx;
+        document.getElementById('bytes-tx').textContent = data.bytes_tx;
+        document.getElementById('bytes-rx').textContent = data.bytes_rx;
+
+        var errorsEl = document.getElementById('errors');
+        errorsEl.textContent = data.errors;
+        errorsEl.style.color = data.errors > 0 ? 'var(--error)' : '';
+
+        document.getElementById('total-bytes').textContent = data.bytes_tx + data.bytes_rx;
+    } catch (error) {
+        console.error('Failed to refresh stats:', error);
+        Alpine.store('toasts').error('Failed to refresh statistics');
+    }
+}
+
+// Auto-refresh every 5 seconds
+setInterval(refreshStats, 5000);
+
+// Update uptime every second
+var uptimeSeconds = {{ status.uptime_seconds }};
+setInterval(function() {
+    uptimeSeconds++;
+    document.getElementById('uptime').textContent = Math.floor(uptimeSeconds) + 's';
+}, 1000);
+</script>
+{% endif %}
+{% endblock %}
