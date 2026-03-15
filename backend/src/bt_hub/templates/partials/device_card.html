@@ -26,8 +26,8 @@
 
     <div class="device-card__actions">
       <button class="favorite-btn {% if device.is_favorite %}favorite-btn--active{% endif %}"
-              hx-patch="/api/devices/{{ device.mac_address }}"
-              hx-vals='{"is_favorite": {{ "false" if device.is_favorite else "true" }}}'
+              hx-post="/api/devices/{{ device.mac_address }}/favorite"
+              hx-vals='{"is_favorite": "{{ "false" if device.is_favorite else "true" }}"}'
               hx-target="#device-{{ device.mac_address | replace(':', '-') }}"
               hx-swap="outerHTML"
               title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">

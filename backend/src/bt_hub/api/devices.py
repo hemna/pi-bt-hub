@@ -6,7 +6,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
 from bt_hub.api import (
@@ -206,6 +207,45 @@ async def update_device(
         live = None
 
     return _build_runtime_state(updated, live)
+
+
+@router.post("/api/devices/{mac_address}/favorite")
+async def toggle_favorite(
+    mac_address: str,
+    request: Request,
+    store: Annotated[DeviceStore, Depends(get_device_store)],
+    bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+    is_favorite: bool = Form(...),
+) -> Response:
+    """Toggle favorite status on a device (HTMX endpoint, returns HTML partial)."""
+    mac = _validate_mac(mac_address)
+    logger.info("Setting favorite=%s for device %s", is_favorite, mac)
+
+    updated = await store.update_device(mac, is_favorite=is_favorite)
+    if updated is None:
+        raise DeviceNotFoundError(mac)
+
+    try:
+        live = await bt.get_device_state(mac)
+    except (DeviceNotFoundError, BluetoothError):
+        live = None
+
+    device = _build_runtime_state(updated, live)
+
+    # Determine which partial to return based on the HTMX target
+    target = request.headers.get("hx-target", "")
+    if target.startswith("device-row-"):
+        template_name = "partials/device_row.html"
+    elif target.startswith("detail-favorite-"):
+        template_name = "partials/favorite_button_detail.html"
+    else:
+        template_name = "partials/device_card.html"
+
+    return templates.TemplateResponse(
+        template_name,
+        {"request": request, "device": device},
+    )
 
 
 @router.delete("/api/devices/{mac_address}")

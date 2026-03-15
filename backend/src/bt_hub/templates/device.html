@@ -25,10 +25,11 @@
       <div class="flex items-center gap-2">
         <h1>{{ device.alias or device.name or device.mac_address }}</h1>
         <button class="favorite-btn {% if device.is_favorite %}favorite-btn--active{% endif %}"
-                hx-patch="/api/devices/{{ device.mac_address }}"
-                hx-vals='{"is_favorite": {{ "false" if device.is_favorite else "true" }}}'
-                hx-target="body"
+                hx-post="/api/devices/{{ device.mac_address }}/favorite"
+                hx-vals='{"is_favorite": "{{ "false" if device.is_favorite else "true" }}"}'
+                hx-target="#detail-favorite-{{ device.mac_address | replace(':', '-') }}"
                 hx-swap="outerHTML"
+                id="detail-favorite-{{ device.mac_address | replace(':', '-') }}"
                 title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
           {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
         </button>
