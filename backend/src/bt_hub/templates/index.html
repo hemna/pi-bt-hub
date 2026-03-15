@@ -5,11 +5,11 @@
 {% block content %}
 <div class="page-header">
   <h1>Dashboard</h1>
-  <p>Bluetooth adapter overview and quick actions</p>
+  <p>Bluetooth adapter overview</p>
 </div>
 
 <!-- Adapter Status Card -->
-<div class="card mb-4" x-data="{ scanning: false }">
+<div class="card mb-4">
   <div class="card__header">
     <h2>Adapter Status</h2>
     {% if adapter %}
@@ -51,15 +51,6 @@
           <span class="badge badge--off">No</span>
         {% endif %}
       </dd>
-
-      <dt>Discovering</dt>
-      <dd>
-        {% if adapter.discovering %}
-          <span class="badge badge--pairing">Active</span>
-        {% else %}
-          <span class="badge badge--disconnected">Inactive</span>
-        {% endif %}
-      </dd>
     </div>
 
     <div class="action-group">
@@ -84,29 +75,6 @@
         Power On
         <span class="spinner spinner--sm htmx-indicator power-indicator"></span>
       </button>
-      {% endif %}
-
-      <!-- Scan Toggle -->
-      {% if adapter.powered %}
-        {% if adapter.discovering %}
-        <button class="btn btn--danger"
-                hx-post="/api/scan/stop"
-                hx-target="#scan-results"
-                hx-indicator=".scan-indicator"
-                @click="scanning = false">
-          Stop Scan
-          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
-        </button>
-        {% else %}
-        <button class="btn btn--primary"
-                hx-post="/api/scan/start"
-                hx-target="#scan-results"
-                hx-indicator=".scan-indicator"
-                @click="scanning = true">
-          Start Scan
-          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
-        </button>
-        {% endif %}
       {% endif %}
     </div>
 
@@ -195,21 +163,6 @@
 </div>
 {% endif %}
 
-<!-- Scan Results -->
-<div class="card mb-4" id="scan-results-card">
-  <div class="card__header">
-    <h2>Scan Results</h2>
-  </div>
-  <div class="card__body" id="scan-results">
-    <div class="empty-state">
-      <div class="empty-state__icon">&#128269;</div>
-      <p class="empty-state__text">
-        Click "Start Scan" to discover nearby Bluetooth devices.
-      </p>
-    </div>
-  </div>
-</div>
-
 <!-- Device Summary Stats -->
 <div class="stat-grid mb-4">
   <div class="stat-card">
@@ -230,24 +183,21 @@
   </div>
 </div>
 
-<!-- Quick Actions -->
+<!-- Scan & Manage Devices CTA -->
 <div class="card">
   <div class="card__header">
-    <h2>Quick Actions</h2>
+    <h2>Manage Devices</h2>
   </div>
   <div class="card__body">
+    <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+      Scan for nearby Bluetooth devices, pair, connect, and manage your devices on the Devices page.
+    </p>
     <div class="action-group">
-      <a href="/devices" class="btn btn--secondary">
-        View All Devices
-      </a>
-      <a href="/devices?filter=connected" class="btn btn--secondary">
-        Connected Devices
+      <a href="/devices" class="btn btn--primary">
+        Scan & Manage Devices
       </a>
       <a href="/devices?filter=favorites" class="btn btn--secondary">
-        Favorite Devices
-      </a>
-      <a href="/settings" class="btn btn--secondary">
-        Settings
+        View Favorites
       </a>
     </div>
   </div>
