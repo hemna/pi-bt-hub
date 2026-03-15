@@ -5,35 +5,86 @@
 {% block content %}
 <div class="page-header">
   <h1>Devices</h1>
-  <p>Manage your Bluetooth devices</p>
+  <p>Scan, pair, and manage your Bluetooth devices</p>
+</div>
+
+<!-- Scan Controls -->
+<div class="card mb-4" x-data="{ scanning: {{ 'true' if is_scanning else 'false' }} }"
+     @bt-ws-message.window="
+       if ($event.detail.type === 'scan_stopped') {
+         scanning = false;
+         // Refresh the page to show updated device list
+         window.location.reload();
+       } else if ($event.detail.type === 'scan_started') {
+         scanning = true;
+       }
+     ">
+  <div class="card__header">
+    <h2>Scan for Devices</h2>
+    <template x-if="scanning">
+      <span class="badge badge--pairing">Scanning...</span>
+    </template>
+  </div>
+  <div class="card__body">
+    <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+      Discover nearby Bluetooth devices. Make sure your device is in pairing mode.
+    </p>
+    
+    <div class="action-group">
+      <template x-if="!scanning">
+        <button class="btn btn--primary"
+                hx-post="/api/scan/start"
+                hx-target="#scan-status"
+                hx-indicator=".scan-indicator"
+                @click="scanning = true">
+          Start Scan
+          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+        </button>
+      </template>
+      <template x-if="scanning">
+        <button class="btn btn--danger"
+                hx-post="/api/scan/stop"
+                hx-target="#scan-status"
+                hx-indicator=".scan-indicator"
+                @click="scanning = false">
+          Stop Scan
+          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+        </button>
+      </template>
+    </div>
+    
+    <div id="scan-status" class="mt-3">
+      <!-- Scan status updates appear here -->
+    </div>
+  </div>
 </div>
 
 <!-- Filter & Sort Bar -->
 <div class="filter-bar">
   <div class="filter-bar__group">
     <button class="filter-bar__btn {% if current_filter == 'all' %}filter-bar__btn--active{% endif %}"
-            hx-get="/api/devices?filter=all"
-            hx-target="#device-list"
-            hx-push-url="/devices?filter=all">
-      All
+            hx-get="/devices?filter=all"
+            hx-target="body"
+            hx-push-url="true">
+      All ({{ device_count | default(0) }})
     </button>
     <button class="filter-bar__btn {% if current_filter == 'paired' %}filter-bar__btn--active{% endif %}"
-            hx-get="/api/devices?filter=paired"
-            hx-target="#device-list"
-            hx-push-url="/devices?filter=paired">
-      Paired
+            hx-get="/devices?filter=paired"
+            hx-target="body"
+            hx-push-url="true">
+      Paired ({{ paired_count | default(0) }})
     </button>
     <button class="filter-bar__btn {% if current_filter == 'connected' %}filter-bar__btn--active{% endif %}"
-            hx-get="/api/devices?filter=connected"
-            hx-target="#device-list"
-            hx-push-url="/devices?filter=connected">
-      Connected
+            hx-get="/devices?filter=connected"
+            hx-target="body"
+            hx-push-url="true">
+      Connected ({{ connected_count | default(0) }})
     </button>
     <button class="filter-bar__btn {% if current_filter == 'favorites' %}filter-bar__btn--active{% endif %}"
-            hx-get="/api/devices?filter=favorites"
-            hx-target="#device-list"
-            hx-push-url="/devices?filter=favorites">
-      Favorites
+            hx-get="/devices?filter=favorites"
+            hx-target="body"
+            hx-push-url="true">
+      Favorites ({{ favorite_count | default(0) }})
     </button>
   </div>
 
@@ -44,8 +95,9 @@
     <select id="sort-select"
             class="form-select"
             style="width: auto;"
-            hx-get="/api/devices"
-            hx-target="#device-list"
+            hx-get="/devices"
+            hx-target="body"
+            hx-push-url="true"
             hx-include="[name='filter']"
             name="sort">
       <option value="last_seen" {% if current_sort == 'last_seen' %}selected{% endif %}>Last Seen</option>
@@ -69,10 +121,25 @@
     <div class="empty-state__icon">&#128225;</div>
     <div class="empty-state__title">No devices found</div>
     <p class="empty-state__text">
-      Try scanning for nearby devices from the
-      <a href="/">Dashboard</a>.
+      Click "Start Scan" above to discover nearby Bluetooth devices.
     </p>
   </div>
   {% endif %}
+</div>
+
+<!-- Help Text -->
+<div class="card mt-4">
+  <div class="card__header">
+    <h3>How to pair a device</h3>
+  </div>
+  <div class="card__body">
+    <ol style="margin: 0; padding-left: 1.25rem; color: var(--text-secondary);">
+      <li style="margin-bottom: 0.5rem;">Put your Bluetooth device in pairing mode</li>
+      <li style="margin-bottom: 0.5rem;">Click "Start Scan" to discover nearby devices</li>
+      <li style="margin-bottom: 0.5rem;">Find your device in the list and click "Pair"</li>
+      <li style="margin-bottom: 0.5rem;">Once paired, click "Connect" to establish a connection</li>
+      <li>Mark frequently used devices as favorites for quick access</li>
+    </ol>
+  </div>
 </div>
 {% endblock %}

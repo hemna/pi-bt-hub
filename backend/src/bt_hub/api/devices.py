@@ -331,15 +331,71 @@ async def devices_page(
     request: Request,
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
+    bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
+    filter: str = Query(default="all", pattern="^(all|paired|connected|favorites)$"),
+    sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
 ) -> object:
     """Serve the devices list page."""
-    devices = await store.get_all_devices()
+    # Get live states from BlueZ
+    try:
+        live_states = await bt.get_all_device_states()
+    except BluetoothError:
+        live_states = {}
+
+    # Get stored devices
+    store_filter = "favorites" if filter == "favorites" else "all"
+    stored_devices = await store.get_all_devices(filter_type=store_filter, sort_by=sort)
+
+    # Upsert any BlueZ-known devices not yet in the store
+    stored_macs = {d["mac_address"] for d in stored_devices}
+    for mac, live_data in live_states.items():
+        if mac not in stored_macs:
+            new_record = await store.upsert_device(
+                mac,
+                name=live_data.get("name"),
+                device_type=live_data.get("device_type"),
+            )
+            stored_devices.append(new_record)
+
+    # Build merged runtime states and count stats
+    devices: list[DeviceRuntimeState] = []
+    paired_count = 0
+    connected_count = 0
+    favorite_count = 0
+
+    for stored in stored_devices:
+        mac = str(stored["mac_address"])
+        live = live_states.get(mac)
+        runtime = _build_runtime_state(stored, live)
+
+        # Count stats (from all devices, before filtering)
+        if runtime.paired:
+            paired_count += 1
+        if runtime.connected:
+            connected_count += 1
+        if runtime.is_favorite:
+            favorite_count += 1
+
+        # Apply filter for paired/connected
+        if filter == "paired" and not runtime.paired:
+            continue
+        if filter == "connected" and not runtime.connected:
+            continue
+
+        devices.append(runtime)
+
     return templates.TemplateResponse(
         "devices.html",
         {
             "request": request,
             "devices": devices,
-            "device_count": len(devices),
+            "device_count": len(stored_devices),
+            "paired_count": paired_count,
+            "connected_count": connected_count,
+            "favorite_count": favorite_count,
+            "current_filter": filter,
+            "current_sort": sort,
+            "is_scanning": bt.is_scanning,
         },
     )
 
