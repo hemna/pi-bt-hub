@@ -39,7 +39,7 @@
   <div class="device-card__bottom">
     <span class="device-card__time">
       {% if device.last_seen %}
-        Last seen: {{ device.last_seen[:16] | replace('T', ' ') }}
+        Last seen: {{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen.strftime is defined else device.last_seen[:16] | replace('T', ' ') }}
       {% endif %}
     </span>
 
