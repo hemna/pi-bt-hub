@@ -38,9 +38,6 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r backend/requirements.txt
 pip install -e backend/
-
-# Install websockets for real-time updates
-pip install websockets
 ```
 
 ### Raspberry Pi Zero W (armv6l)
@@ -217,7 +214,7 @@ Access the web interface at `http://<pi-address>:8080`
    sudo journalctl -u bt-hub -f
    ```
 
-3. Ensure websockets is installed for real-time updates:
+3. Ensure websockets is installed (included in requirements.txt):
    ```bash
    pip install websockets
    sudo systemctl restart bt-hub

@@ -92,9 +92,6 @@ source .venv/bin/activate
 # Install dependencies (piwheels provides pre-built wheels)
 pip install -r backend/requirements.txt
 pip install -e backend/
-
-# Install websockets for real-time updates
-pip install websockets
 ```
 
 This should complete in under 5 minutes with piwheels providing pre-built wheels for most packages.
