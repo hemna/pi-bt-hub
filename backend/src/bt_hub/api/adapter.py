@@ -64,25 +64,43 @@ async def set_adapter_power(
     return await bt.set_powered(body.powered)
 
 
-@router.post("/api/scan/start", response_model=ScanResponse)
+@router.post("/api/scan/start")
 async def start_scan(
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
     duration: int = 10,
-) -> ScanResponse:
+) -> object:
     """Start Bluetooth discovery scan."""
     logger.info("Starting scan for %d seconds", duration)
     await bt.start_discovery(duration_seconds=duration)
+
+    # Return HTML partial for HTMX, or JSON for API clients
+    if "hx-request" in request.headers:
+        return templates.TemplateResponse(
+            "partials/scan_progress.html",
+            {"request": request, "duration": duration},
+        )
     return ScanResponse(status="scanning", duration_seconds=duration)
 
 
-@router.post("/api/scan/stop", response_model=ScanResponse)
+@router.post("/api/scan/stop")
 async def stop_scan(
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-) -> ScanResponse:
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+) -> object:
     """Stop Bluetooth discovery scan."""
     logger.info("Stopping scan")
     await bt.stop_discovery()
+
+    # Return HTML partial for HTMX, or JSON for API clients
+    if "hx-request" in request.headers:
+        return templates.TemplateResponse(
+            "partials/scan_stopped.html",
+            {"request": request},
+        )
     return ScanResponse(status="stopped")
 
 
@@ -109,14 +127,38 @@ async def index_page(
     if settings.bridge_enabled:
         bridge_status = await bridge_client.get_status()
 
+    # Get device counts
     devices = await store.get_all_devices()
+
+    # Get live states to count paired/connected
+    try:
+        live_states = await bt.get_all_device_states()
+    except Exception:
+        live_states = {}
+
+    paired_count = 0
+    connected_count = 0
+    favorite_count = 0
+
+    for d in devices:
+        mac = str(d["mac_address"])
+        live = live_states.get(mac, {})
+        if live.get("paired", False):
+            paired_count += 1
+        if live.get("connected", False):
+            connected_count += 1
+        if d.get("is_favorite", False):
+            favorite_count += 1
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "adapter": adapter,
             "device_count": len(devices),
-            "is_scanning": bt.is_scanning,
+            "paired_count": paired_count,
+            "connected_count": connected_count,
+            "favorite_count": favorite_count,
             "bridge_status": bridge_status,
             "bridge_enabled": settings.bridge_enabled,
         },

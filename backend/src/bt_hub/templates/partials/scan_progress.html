@@ -1,0 +1,74 @@
+<!-- Scan in progress partial -->
+<div class="scan-progress" 
+     x-data="{ 
+       devices: [], 
+       scanning: true,
+       init() {
+         // Fetch current devices immediately
+         fetch('/api/devices')
+           .then(r => r.json())
+           .then(data => {
+             this.devices = data.devices || [];
+           });
+       }
+     }"
+     @bt-ws-message.window="
+       if ($event.detail.type === 'device_discovered') {
+         const d = $event.detail;
+         const exists = devices.find(dev => dev.mac_address === d.mac_address);
+         if (!exists) {
+           devices.unshift({
+             mac_address: d.mac_address,
+             name: d.name || d.alias || d.mac_address,
+             rssi: d.rssi,
+             paired: d.paired,
+             connected: d.connected
+           });
+         }
+       } else if ($event.detail.type === 'scan_stopped') {
+         scanning = false;
+       }
+     ">
+  
+  <div class="flex items-center gap-2 mb-2">
+    <template x-if="scanning">
+      <span class="spinner spinner--sm"></span>
+    </template>
+    <span x-text="scanning ? 'Scanning for devices...' : 'Scan complete'"></span>
+  </div>
+  <p class="text-secondary" style="font-size: 0.875rem;">
+    <span x-text="devices.length"></span> device(s) found
+  </p>
+
+  <div class="device-list mt-4">
+    <template x-for="device in devices" :key="device.mac_address">
+      <div class="device-row">
+        <div class="device-row__info">
+          <span class="device-row__name" x-text="device.name || device.mac_address"></span>
+          <span class="device-row__mac" x-text="device.mac_address"></span>
+        </div>
+        <div class="device-row__status">
+          <template x-if="device.connected">
+            <span class="badge badge--connected">Connected</span>
+          </template>
+          <template x-if="device.paired && !device.connected">
+            <span class="badge badge--on">Paired</span>
+          </template>
+          <template x-if="device.rssi">
+            <span class="badge badge--disconnected" x-text="device.rssi + ' dBm'"></span>
+          </template>
+        </div>
+      </div>
+    </template>
+    
+    <template x-if="devices.length === 0 && !scanning">
+      <div class="empty-state" style="padding: 1rem;">
+        <p class="empty-state__text">No devices found. Make sure Bluetooth devices are nearby and discoverable.</p>
+      </div>
+    </template>
+  </div>
+  
+  <div class="mt-4">
+    <a href="/devices" class="btn btn--primary">View All Devices</a>
+  </div>
+</div>
