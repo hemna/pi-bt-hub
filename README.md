@@ -2,6 +2,8 @@
 
 A web-based Bluetooth management interface for Raspberry Pi, with optional integration for the BT Bridge daemon that bridges Bluetooth LE to Classic Bluetooth for TNC (Terminal Node Controller) devices.
 
+![Dashboard](docs/images/dashboard.png)
+
 ## Features
 
 - **Device Management**: Scan, discover, and manage Bluetooth devices
@@ -199,6 +201,23 @@ Access the web interface at `http://<pi-address>:8080`
 - **TNC Devices** (`/bridge/tnc`): Manage TNC device history (when enabled)
 - **Settings** (`/settings`): Configure app and bridge settings
 - **Logs** (`/logs`): View application logs
+
+### Screenshots
+
+#### Devices
+Scan for nearby Bluetooth devices, pair, connect, and mark favorites.
+
+![Devices](docs/images/devices.png)
+
+#### Settings
+Configure theme, scan duration, auto-connect behavior, and bridge TCP KISS port.
+
+![Settings](docs/images/settings.png)
+
+#### Live Logs
+Real-time streaming application logs with level filtering.
+
+![Logs](docs/images/logs.png)
 
 ## Troubleshooting
 
