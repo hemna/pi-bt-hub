@@ -128,4 +128,129 @@
   </div>
 
 </form>
+
+{% if bridge_enabled %}
+<!-- Bridge Settings (separate form, talks to bridge daemon) -->
+<div x-data="{
+        tcpKissPort: 8001,
+        originalPort: 8001,
+        loading: true,
+        saving: false,
+        offline: false,
+        async init() {
+          try {
+            const resp = await fetch('/api/bridge/settings');
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.offline) {
+                this.offline = true;
+              } else {
+                this.tcpKissPort = data.tcp_kiss_port || 8001;
+                this.originalPort = this.tcpKissPort;
+              }
+            }
+          } catch (err) {
+            this.offline = true;
+          } finally {
+            this.loading = false;
+          }
+        },
+        get hasChanges() {
+          return this.tcpKissPort !== this.originalPort;
+        },
+        async saveBridgeSettings() {
+          if (!this.hasChanges) return;
+          
+          if (!confirm('Changing the TCP KISS port requires restarting the bridge. Continue?')) {
+            return;
+          }
+          
+          this.saving = true;
+          try {
+            // Save settings
+            const saveResp = await fetch('/api/bridge/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tcp_kiss_port: this.tcpKissPort })
+            });
+            
+            if (!saveResp.ok) {
+              const err = await saveResp.json();
+              throw new Error(err.message || 'Failed to save settings');
+            }
+            
+            // Restart bridge
+            const restartResp = await fetch('/api/bridge/restart', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!restartResp.ok) {
+              const err = await restartResp.json();
+              throw new Error(err.message || 'Failed to restart bridge');
+            }
+            
+            this.originalPort = this.tcpKissPort;
+            Alpine.store('toasts').success('Bridge settings saved. Bridge is restarting...');
+          } catch (err) {
+            Alpine.store('toasts').error('Error: ' + err.message);
+          } finally {
+            this.saving = false;
+          }
+        }
+      }"
+      class="settings-form mt-6">
+
+  <div class="card settings-section">
+    <div class="card__header">
+      <h2>Bridge Settings</h2>
+    </div>
+    <div class="card__body">
+      <template x-if="loading">
+        <div class="flex items-center gap-2">
+          <span class="spinner spinner--sm"></span>
+          <span>Loading bridge settings...</span>
+        </div>
+      </template>
+      
+      <template x-if="!loading && offline">
+        <div class="empty-state" style="padding: 1rem;">
+          <div class="empty-state__icon">&#128268;</div>
+          <div class="empty-state__text">Bridge daemon is not reachable.</div>
+        </div>
+      </template>
+      
+      <template x-if="!loading && !offline">
+        <div class="form-group">
+          <label class="form-label" for="tcp-kiss-port">TCP KISS Server Port</label>
+          <input type="number"
+                 id="tcp-kiss-port"
+                 class="form-input"
+                 style="max-width: 150px;"
+                 min="1024"
+                 max="65535"
+                 x-model.number="tcpKissPort">
+          <p class="form-hint">Port for TCP KISS client connections (default: 8001). Change to avoid conflicts with direwolf.</p>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <template x-if="!loading && !offline">
+    <div class="flex justify-between items-center mt-4">
+      <button type="button" 
+              class="btn btn--primary" 
+              :disabled="saving || !hasChanges"
+              @click="saveBridgeSettings()">
+        <span x-show="!saving">Save Bridge Settings</span>
+        <span x-show="saving"><span class="spinner spinner--sm"></span> Saving...</span>
+      </button>
+      <span x-show="hasChanges" class="text-warning" style="font-size: 0.875rem;">
+        Unsaved changes
+      </span>
+    </div>
+  </template>
+
+</div>
+{% endif %}
 {% endblock %}
