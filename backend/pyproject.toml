@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pi-bt-hub"
-version = "0.1.0"
+version = "0.2.0"
 description = "Unified Bluetooth management and bridge web UI for Raspberry Pi"
 requires-python = ">=3.11"
 dependencies = [

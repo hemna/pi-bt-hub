@@ -13,14 +13,18 @@ A web-based Bluetooth management interface for Raspberry Pi, with optional integ
 
 ## Requirements
 
-- Raspberry Pi (tested on Pi Zero W, Pi 3, Pi 4)
+- Raspberry Pi (tested on Pi Zero W, Pi Zero 2 W, Pi 3, Pi 4)
 - Raspberry Pi OS (Bookworm or Trixie recommended)
 - Python 3.11+
 - Bluetooth adapter (built-in or USB)
 
 ## Installation
 
-### Quick Install (Raspberry Pi OS)
+> **Detailed guide**: See [docs/INSTALL.md](docs/INSTALL.md) for complete platform-specific instructions, including piwheels configuration and troubleshooting.
+
+### Quick Install (Raspberry Pi 2/3/4/5 and Pi Zero 2 W)
+
+These boards use armv7l or aarch64 and have pre-built wheels available from [piwheels.org](https://www.piwheels.org/). Installation is straightforward:
 
 ```bash
 # Clone the repository
@@ -39,27 +43,53 @@ pip install -e backend/
 pip install websockets
 ```
 
-### Pi Zero / armv6l Notes
+### Raspberry Pi Zero W (armv6l)
 
-On Pi Zero (armv6l architecture), some packages require compilation from source since piwheels only provides armv7l wheels. This can take 30+ minutes and requires adequate swap space.
+The original Pi Zero W uses an armv6l CPU. Most piwheels packages target armv7l and above, so many dependencies must be compiled from source. This is slow (~30-60 minutes) and requires extra swap space. See [docs/INSTALL.md](docs/INSTALL.md) for the full walkthrough.
 
-**Recommended**: Increase swap to 1GB before installing:
+**Quick summary:**
 
 ```bash
+# 1. Increase swap to 1GB (required for compilation)
 sudo dphys-swapfile swapoff
 sudo sed -i 's/CONF_SWAPSIZE=.*/CONF_SWAPSIZE=1024/' /etc/dphys-swapfile
 sudo dphys-swapfile setup
 sudo dphys-swapfile swapon
-```
 
-If compilation fails due to memory, install packages individually:
+# 2. Install build dependencies
+sudo apt-get install -y python3-dev libglib2.0-dev
 
-```bash
+# 3. Clone and set up
+git clone https://github.com/hemna/pi-bt-hub.git
+cd pi-bt-hub
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 4. Install packages individually (avoids pip memory issues)
 pip install fastapi uvicorn jinja2 aiosqlite httpx python-multipart websockets
 pip install pydantic pydantic-settings
 pip install dbus-fast  # This one takes longest to compile
 pip install --no-deps -e backend/
 ```
+
+### Using piwheels (Raspberry Pi OS default)
+
+Raspberry Pi OS ships with [piwheels.org](https://www.piwheels.org/) pre-configured in `/etc/pip.conf`. This provides pre-built ARM wheels and dramatically speeds up installs on armv7l and aarch64 boards (Pi Zero 2 W, Pi 3/4/5).
+
+If piwheels is not configured (e.g., you are using a custom OS image), you can add it manually:
+
+```bash
+# Check if piwheels is already configured
+pip config list
+
+# If not present, add it
+sudo tee /etc/pip.conf > /dev/null <<EOF
+[global]
+extra-index-url=https://www.piwheels.org/simple
+EOF
+```
+
+> **Note**: piwheels does not provide armv6l wheels. On the original Pi Zero W, packages with C extensions will always be compiled from source regardless of this setting.
 
 ## Running
 
