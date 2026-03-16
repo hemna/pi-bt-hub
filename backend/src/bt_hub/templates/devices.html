@@ -34,7 +34,8 @@
       <template x-if="!scanning">
         <button class="btn btn--primary"
                 hx-post="/api/scan/start"
-                hx-target="#scan-status"
+                hx-target="#device-list"
+                hx-swap="innerHTML"
                 hx-indicator=".scan-indicator"
                 @click="scanning = true">
           Start Scan

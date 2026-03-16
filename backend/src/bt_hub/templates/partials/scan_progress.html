@@ -1,74 +1,107 @@
-<!-- Scan in progress partial -->
-<div class="scan-progress" 
-     x-data="{ 
-       devices: [], 
+{# Scan in progress — replaces #device-list while scanning #}
+
+<div class="scan-progress"
+     x-data="{
+       devices: [],
        scanning: true,
        init() {
-         // Fetch current devices immediately
-         fetch('/api/devices')
-           .then(r => r.json())
-           .then(data => {
-             this.devices = data.devices || [];
-           });
+         // Start with empty list — devices will appear as discovered
        }
      }"
      @bt-ws-message.window="
        if ($event.detail.type === 'device_discovered') {
          const d = $event.detail;
-         const exists = devices.find(dev => dev.mac_address === d.mac_address);
-         if (!exists) {
+         const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
+         if (idx === -1) {
            devices.unshift({
              mac_address: d.mac_address,
              name: d.name || d.alias || d.mac_address,
              rssi: d.rssi,
-             paired: d.paired,
-             connected: d.connected
+             paired: d.paired || false,
+             connected: d.connected || false,
+             device_type: d.device_type || null
            });
+         } else {
+           // Update RSSI for already-seen device
+           if (d.rssi) devices[idx].rssi = d.rssi;
+         }
+       } else if ($event.detail.type === 'device_updated') {
+         const d = $event.detail;
+         const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
+         if (idx !== -1) {
+           if (d.rssi) devices[idx].rssi = d.rssi;
+           if (d.name) devices[idx].name = d.name;
+           if (d.connected !== undefined) devices[idx].connected = d.connected;
+           if (d.paired !== undefined) devices[idx].paired = d.paired;
          }
        } else if ($event.detail.type === 'scan_stopped') {
          scanning = false;
        }
      ">
-  
-  <div class="flex items-center gap-2 mb-2">
+
+  <!-- Scan status bar -->
+  <div class="flex items-center gap-2 mb-4" style="padding: 0.75rem 1rem; background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border-color);">
     <template x-if="scanning">
       <span class="spinner spinner--sm"></span>
     </template>
-    <span x-text="scanning ? 'Scanning for devices...' : 'Scan complete'"></span>
+    <template x-if="!scanning">
+      <span style="color: var(--green);">&#10003;</span>
+    </template>
+    <strong x-text="scanning ? 'Scanning for nearby devices...' : 'Scan complete'"></strong>
+    <span class="text-secondary" style="margin-left: auto;" x-text="devices.length + ' device(s) found'"></span>
   </div>
-  <p class="text-secondary" style="font-size: 0.875rem;">
-    <span x-text="devices.length"></span> device(s) found
-  </p>
 
-  <div class="device-list mt-4">
+  <!-- Live device grid -->
+  <div class="device-grid">
     <template x-for="device in devices" :key="device.mac_address">
-      <div class="device-row">
-        <div class="device-row__info">
-          <span class="device-row__name" x-text="device.name || device.mac_address"></span>
-          <span class="device-row__mac" x-text="device.mac_address"></span>
+      <div class="device-card">
+        <div class="device-card__top">
+          <div class="device-icon">&#128225;</div>
+          <div class="device-card__info">
+            <div class="device-card__name">
+              <a :href="'/devices/' + device.mac_address" x-text="device.name || device.mac_address"></a>
+            </div>
+            <div class="device-card__mac" x-text="device.mac_address"></div>
+            <div class="device-card__meta">
+              <template x-if="device.connected">
+                <span class="badge badge--connected">Connected</span>
+              </template>
+              <template x-if="device.paired && !device.connected">
+                <span class="badge badge--on">Paired</span>
+              </template>
+              <template x-if="!device.paired && !device.connected">
+                <span class="badge badge--disconnected">Discovered</span>
+              </template>
+              <template x-if="device.rssi">
+                <span class="badge" x-text="device.rssi + ' dBm'" style="font-size: 0.75rem;"></span>
+              </template>
+            </div>
+          </div>
         </div>
-        <div class="device-row__status">
-          <template x-if="device.connected">
-            <span class="badge badge--connected">Connected</span>
-          </template>
-          <template x-if="device.paired && !device.connected">
-            <span class="badge badge--on">Paired</span>
-          </template>
-          <template x-if="device.rssi">
-            <span class="badge badge--disconnected" x-text="device.rssi + ' dBm'"></span>
-          </template>
+        <div class="device-card__bottom">
+          <span class="device-card__time" x-text="'Just now'"></span>
+          <div class="flex gap-1">
+            <a :href="'/devices/' + device.mac_address" class="btn btn--secondary btn--sm">Details</a>
+          </div>
         </div>
       </div>
     </template>
-    
-    <template x-if="devices.length === 0 && !scanning">
-      <div class="empty-state" style="padding: 1rem;">
-        <p class="empty-state__text">No devices found. Make sure Bluetooth devices are nearby and discoverable.</p>
-      </div>
-    </template>
   </div>
-  
-  <div class="mt-4">
-    <a href="/devices" class="btn btn--primary">View All Devices</a>
-  </div>
+
+  <!-- Empty state while scanning -->
+  <template x-if="devices.length === 0 && scanning">
+    <div class="empty-state" style="padding: 2rem;">
+      <div class="empty-state__icon">&#128225;</div>
+      <p class="empty-state__text">Waiting for devices to appear...<br>Make sure your Bluetooth device is powered on and discoverable.</p>
+    </div>
+  </template>
+
+  <!-- Empty state after scan complete -->
+  <template x-if="devices.length === 0 && !scanning">
+    <div class="empty-state" style="padding: 2rem;">
+      <div class="empty-state__icon">&#128225;</div>
+      <div class="empty-state__title">No devices found</div>
+      <p class="empty-state__text">No new Bluetooth devices were discovered. Make sure devices are nearby and in pairing mode.</p>
+    </div>
+  </template>
 </div>
