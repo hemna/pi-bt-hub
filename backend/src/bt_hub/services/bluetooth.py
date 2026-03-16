@@ -692,7 +692,13 @@ class BlueZManager:
                 method="Connect",
             )
         except BluetoothError as exc:
-            raise ConnectionFailedError(mac, str(exc.error_message)) from exc
+            reason = str(exc.error_message)
+            if "profile-unavailable" in reason.lower() or "NotAvailable" in reason:
+                reason = (
+                    "No compatible connection profile available. "
+                    "TNC devices should be connected via the Bridge page."
+                )
+            raise ConnectionFailedError(mac, reason) from exc
 
     async def disconnect_device(self, mac: str) -> None:
         """Disconnect from a device."""
