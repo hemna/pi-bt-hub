@@ -25,6 +25,15 @@
              }
            })
            .catch(() => {});
+
+         // Fallback: reload the page after scan duration + buffer,
+         // in case the WebSocket scan_stopped event is missed.
+         setTimeout(() => {
+           if (this.scanning) {
+             this.scanning = false;
+             window.location.reload();
+           }
+         }, {{ (duration | default(10)) * 1000 + 3000 }});
        }
      }"
      @bt-ws-message.window="
@@ -55,6 +64,7 @@
          }
        } else if ($event.detail.type === 'scan_stopped') {
          scanning = false;
+         window.location.reload();
        }
      ">
 

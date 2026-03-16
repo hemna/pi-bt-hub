@@ -487,6 +487,7 @@ class BlueZManager:
             logger.debug("StopDiscovery failed (may already be stopped)", exc_info=True)
         finally:
             self._is_scanning = False
+            logger.info("Scan stopped, publishing scan_stopped event")
             await self._event_bus.publish(Event("scan_stopped", {}))
 
     # --- Device operations ---
