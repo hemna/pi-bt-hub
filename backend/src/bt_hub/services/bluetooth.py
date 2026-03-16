@@ -116,8 +116,7 @@ class BlueZManager:
         if not HAS_DBUS_FAST:
             logger.error("dbus-fast is not installed; Bluetooth features are unavailable")
             raise AdapterUnavailableError(
-                "dbus-fast package is not installed. "
-                "Install it with: pip install dbus-fast"
+                "dbus-fast package is not installed. Install it with: pip install dbus-fast"
             )
         try:
             self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -435,6 +434,28 @@ class BlueZManager:
                 {"duration_seconds": duration_seconds},
             )
         )
+
+        # Emit device_discovered for all devices BlueZ already knows about,
+        # since InterfacesAdded only fires for truly new devices.
+        try:
+            known_devices = await self.get_all_device_states()
+            for mac, props in known_devices.items():
+                await self._event_bus.publish(
+                    Event(
+                        "device_discovered",
+                        {
+                            "mac_address": mac,
+                            "name": props.get("name"),
+                            "alias": props.get("alias"),
+                            "rssi": props.get("rssi"),
+                            "paired": props.get("paired", False),
+                            "connected": props.get("connected", False),
+                            "device_type": props.get("device_type"),
+                        },
+                    )
+                )
+        except Exception:
+            logger.debug("Failed to emit cached devices at scan start", exc_info=True)
 
         # Schedule auto-stop
         self._scan_task = asyncio.create_task(self._auto_stop_discovery(duration_seconds))

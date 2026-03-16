@@ -5,7 +5,26 @@
        devices: [],
        scanning: true,
        init() {
-         // Start with empty list — devices will appear as discovered
+         // Fetch devices BlueZ already knows about so the list isn't empty
+         fetch('/api/devices')
+           .then(r => r.json())
+           .then(data => {
+             if (data.devices) {
+               data.devices.forEach(d => {
+                 if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
+                   this.devices.push({
+                     mac_address: d.mac_address,
+                     name: d.alias || d.name || d.mac_address,
+                     rssi: d.rssi || null,
+                     paired: d.paired || false,
+                     connected: d.connected || false,
+                     device_type: d.device_type || null
+                   });
+                 }
+               });
+             }
+           })
+           .catch(() => {});
        }
      }"
      @bt-ws-message.window="
