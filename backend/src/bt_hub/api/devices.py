@@ -265,11 +265,12 @@ def _htmx_device_response(
     if target.startswith("device-row-"):
         template_name = "partials/device_row.html"
     elif target == "body":
-        # Detail page actions target body — redirect back to the device page
-        from starlette.responses import RedirectResponse
-
+        # Detail page actions target body — tell HTMX to do a full page reload
         mac = device.mac_address
-        return RedirectResponse(url=f"/devices/{mac}", status_code=303)
+        return Response(
+            status_code=200,
+            headers={"HX-Redirect": f"/devices/{mac}"},
+        )
     else:
         template_name = "partials/device_card.html"
 

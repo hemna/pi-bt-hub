@@ -821,13 +821,13 @@ img {
 }
 
 .device-card__name a {
-  color: inherit;
+  color: var(--accent);
   text-decoration: none;
 }
 
 .device-card__name a:hover {
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
 }
 
 .device-card__mac {

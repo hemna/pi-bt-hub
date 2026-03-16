@@ -37,6 +37,8 @@
       {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
     </button>
 
+    <a href="/devices/{{ device.mac_address }}" class="btn btn--secondary btn--sm">Details</a>
+
     {% if device.paired and not device.connected %}
     <button class="btn btn--success btn--sm"
             hx-post="/api/devices/{{ device.mac_address }}/connect"
