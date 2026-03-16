@@ -44,6 +44,9 @@ ADAPTER_INTERFACE = "org.bluez.Adapter1"
 DEVICE_INTERFACE = "org.bluez.Device1"
 PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 OBJECT_MANAGER_INTERFACE = "org.freedesktop.DBus.ObjectManager"
+AGENT_MANAGER_INTERFACE = "org.bluez.AgentManager1"
+
+from bt_hub.services.bt_agent import AGENT_PATH, AutoAcceptAgent  # noqa: E402
 
 
 def _mac_to_device_path(mac: str, adapter: str = "hci0") -> str:
@@ -129,6 +132,12 @@ class BlueZManager:
             await self._subscribe_signals()
         except Exception:
             logger.warning("Failed to subscribe to BlueZ signals", exc_info=True)
+
+        # Register auto-accept pairing agent
+        try:
+            await self._register_agent()
+        except Exception:
+            logger.warning("Failed to register pairing agent", exc_info=True)
 
         logger.info("BlueZManager connected to D-Bus (adapter: %s)", self._adapter_name)
 
@@ -294,6 +303,40 @@ class BlueZManager:
 
         # Register a message handler on the bus
         bus.add_message_handler(self._on_dbus_message)
+
+    async def _register_agent(self) -> None:
+        """Register an auto-accept pairing agent with BlueZ."""
+        bus = self._ensure_bus()
+
+        # Export the agent object on the bus
+        agent = AutoAcceptAgent()
+        bus.export(AGENT_PATH, agent)
+
+        # Register the agent with BlueZ AgentManager
+        await bus.call(
+            Message(
+                destination=BLUEZ_SERVICE,
+                path="/org/bluez",
+                interface=AGENT_MANAGER_INTERFACE,
+                member="RegisterAgent",
+                signature="os",
+                body=[AGENT_PATH, "NoInputNoOutput"],
+            )
+        )
+
+        # Make it the default agent
+        await bus.call(
+            Message(
+                destination=BLUEZ_SERVICE,
+                path="/org/bluez",
+                interface=AGENT_MANAGER_INTERFACE,
+                member="RequestDefaultAgent",
+                signature="o",
+                body=[AGENT_PATH],
+            )
+        )
+
+        logger.info("Registered auto-accept pairing agent at %s", AGENT_PATH)
 
     def _on_dbus_message(self, msg: Any) -> bool:
         """Handle incoming D-Bus signals. Returns False to allow other handlers."""
