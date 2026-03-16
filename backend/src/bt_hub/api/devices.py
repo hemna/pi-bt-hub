@@ -103,6 +103,7 @@ def _build_runtime_state(
         trusted=trusted,
         rssi=rssi,
         connection_state=connection_state,
+        in_range=live is not None,
     )
 
 

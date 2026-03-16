@@ -39,33 +39,35 @@
 
     <a href="/devices/{{ device.mac_address }}" class="btn btn--secondary btn--sm">Details</a>
 
-    {% if device.paired and not device.connected %}
-    <button class="btn btn--success btn--sm"
-            hx-post="/api/devices/{{ device.mac_address }}/connect"
-            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML"
-            hx-indicator="closest .btn">
-      <span class="htmx-indicator spinner spinner--sm"></span>
-      Connect
-    </button>
-    {% elif device.connected %}
-    <button class="btn btn--secondary btn--sm"
-            hx-post="/api/devices/{{ device.mac_address }}/disconnect"
-            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML"
-            hx-indicator="closest .btn">
-      <span class="htmx-indicator spinner spinner--sm"></span>
-      Disconnect
-    </button>
-    {% elif not device.paired %}
-    <button class="btn btn--primary btn--sm"
-            hx-post="/api/devices/{{ device.mac_address }}/pair"
-            hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML"
-            hx-indicator="closest .btn">
-      <span class="htmx-indicator spinner spinner--sm"></span>
-      Pair
-    </button>
+    {% if device.in_range | default(true) %}
+      {% if device.paired and not device.connected %}
+      <button class="btn btn--success btn--sm"
+              hx-post="/api/devices/{{ device.mac_address }}/connect"
+              hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+              hx-swap="outerHTML"
+              hx-indicator="closest .btn">
+        <span class="htmx-indicator spinner spinner--sm"></span>
+        Connect
+      </button>
+      {% elif device.connected %}
+      <button class="btn btn--secondary btn--sm"
+              hx-post="/api/devices/{{ device.mac_address }}/disconnect"
+              hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+              hx-swap="outerHTML"
+              hx-indicator="closest .btn">
+        <span class="htmx-indicator spinner spinner--sm"></span>
+        Disconnect
+      </button>
+      {% elif not device.paired %}
+      <button class="btn btn--primary btn--sm"
+              hx-post="/api/devices/{{ device.mac_address }}/pair"
+              hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
+              hx-swap="outerHTML"
+              hx-indicator="closest .btn">
+        <span class="htmx-indicator spinner spinner--sm"></span>
+        Pair
+      </button>
+      {% endif %}
     {% endif %}
   </div>
 </div>

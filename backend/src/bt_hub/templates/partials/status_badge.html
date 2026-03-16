@@ -1,9 +1,12 @@
 {# Status badge partial - displays connection state as a colored badge #}
 {# Expects: device.connection_state (str from ConnectionState enum) #}
+{# Expects: device.in_range (bool, True if device is currently known to BlueZ) #}
 
 {% set state = device.connection_state | default('disconnected') %}
 
-{% if state == 'connected' %}
+{% if not device.in_range | default(true) %}
+<span class="badge badge--disconnected">Not in range</span>
+{% elif state == 'connected' %}
 <span class="badge badge--connected">Connected</span>
 {% elif state == 'connecting' %}
 <span class="badge badge--connecting">Connecting</span>

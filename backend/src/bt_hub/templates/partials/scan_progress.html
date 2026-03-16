@@ -127,6 +127,32 @@
           <span class="device-card__time" x-text="'Just now'"></span>
           <div class="flex gap-1">
             <a :href="'/devices/' + device.mac_address" class="btn btn--secondary btn--sm">Details</a>
+            <template x-if="device.paired && !device.connected">
+              <button class="btn btn--success btn--sm"
+                      @click="
+                        $el.disabled = true; $el.textContent = 'Connecting...';
+                        fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/connect', {method: 'POST'})
+                          .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail?.message || d.message || 'Connection failed') });
+                            device.connected = true;
+                            Alpine.store('toasts')?.success('Connected to ' + (device.name || device.mac_address));
+                          })
+                          .catch(e => Alpine.store('toasts')?.error(e.message))
+                          .finally(() => { $el.disabled = false; $el.textContent = 'Connect'; });
+                      ">Connect</button>
+            </template>
+            <template x-if="!device.paired && !device.connected">
+              <button class="btn btn--primary btn--sm"
+                      @click="
+                        $el.disabled = true; $el.textContent = 'Pairing...';
+                        fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/pair', {method: 'POST'})
+                          .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.detail?.message || d.message || 'Pairing failed') });
+                            device.paired = true;
+                            Alpine.store('toasts')?.success('Paired with ' + (device.name || device.mac_address));
+                          })
+                          .catch(e => Alpine.store('toasts')?.error(e.message))
+                          .finally(() => { $el.disabled = false; $el.textContent = 'Pair'; });
+                      ">Pair</button>
+            </template>
           </div>
         </div>
       </div>

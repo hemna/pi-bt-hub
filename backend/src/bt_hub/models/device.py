@@ -82,6 +82,8 @@ class DeviceRuntimeState(Device):
     trusted: bool = False
     rssi: int | None = None
     connection_state: ConnectionState = ConnectionState.DISCONNECTED
+    in_range: bool = False
+    """True when the device is currently known to BlueZ (i.e. live data available)."""
 
 
 class DeviceUpdate(BaseModel):
