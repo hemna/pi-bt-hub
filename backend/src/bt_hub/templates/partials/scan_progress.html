@@ -118,7 +118,15 @@
                 <span class="badge badge--disconnected">Discovered</span>
               </template>
               <template x-if="device.rssi">
-                <span class="badge" x-text="device.rssi + ' dBm'" style="font-size: 0.75rem;"></span>
+                <span class="badge" style="font-size: 0.75rem;"
+                      :title="device.rssi + ' dBm'">
+                  <span x-text="
+                    device.rssi >= -50 ? '\u2582\u2584\u2586\u2588' :
+                    device.rssi >= -70 ? '\u2582\u2584\u2586' :
+                    device.rssi >= -85 ? '\u2582\u2584' : '\u2582'
+                  " style="letter-spacing: 1px;"></span>
+                  <span x-text="device.rssi + ' dBm'" style="margin-left: 0.25rem;"></span>
+                </span>
               </template>
             </div>
           </div>

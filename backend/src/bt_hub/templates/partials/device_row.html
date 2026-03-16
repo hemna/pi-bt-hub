@@ -19,6 +19,12 @@
     </div>
     <div class="device-row__mac">{{ device.mac_address }}</div>
     {% include "partials/status_badge.html" %}
+    {% if device.rssi is not none %}
+    <span class="badge" style="font-size: 0.75rem;" title="{{ device.rssi }} dBm">
+      {% if device.rssi >= -50 %}&#9602;&#9604;&#9606;&#9608;{% elif device.rssi >= -70 %}&#9602;&#9604;&#9606;{% elif device.rssi >= -85 %}&#9602;&#9604;{% else %}&#9602;{% endif %}
+      {{ device.rssi }} dBm
+    </span>
+    {% endif %}
   </div>
 
   <span class="device-card__time">
