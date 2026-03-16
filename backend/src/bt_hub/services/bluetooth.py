@@ -320,7 +320,7 @@ class BlueZManager:
                 interface=AGENT_MANAGER_INTERFACE,
                 member="RegisterAgent",
                 signature="os",
-                body=[AGENT_PATH, "NoInputNoOutput"],
+                body=[AGENT_PATH, "DisplayYesNo"],
             )
         )
 
