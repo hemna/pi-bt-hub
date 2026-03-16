@@ -29,12 +29,12 @@
     <div class="card" id="ble-card">
         <div class="card__header">
             <h3>BLE (Phone)</h3>
-            <span class="badge badge--{{ 'connected' if status.ble.state.value == 'connected' else ('connecting' if status.ble.state.value == 'advertising' else 'disconnected') }}" id="ble-badge">
-                {{ status.ble.state.value | title }}
+            <span class="badge badge--{{ 'connected' if status.ble.state == 'connected' else ('connecting' if status.ble.state == 'advertising' else 'disconnected') }}" id="ble-badge">
+                {{ status.ble.state | title }}
             </span>
         </div>
         <div class="card__body" id="ble-details">
-            {% if status.ble.state.value == 'connected' %}
+            {% if status.ble.state == 'connected' %}
                 <dl class="info-grid">
                     <dt>Device</dt>
                     <dd>{{ status.ble.device_name or 'Unknown' }}</dd>
@@ -62,12 +62,12 @@
     <div class="card" id="classic-card">
         <div class="card__header">
             <h3>Classic (TNC)</h3>
-            <span class="badge badge--{{ 'connected' if status.classic.state.value == 'connected' else ('connecting' if status.classic.state.value == 'connecting' else ('error' if status.classic.state.value == 'error' else 'disconnected')) }}" id="classic-badge">
-                {{ status.classic.state.value | title }}
+            <span class="badge badge--{{ 'connected' if status.classic.state == 'connected' else ('connecting' if status.classic.state == 'connecting' else ('error' if status.classic.state == 'error' else 'disconnected')) }}" id="classic-badge">
+                {{ status.classic.state | title }}
             </span>
         </div>
         <div class="card__body" id="classic-details">
-            {% if status.classic.state.value == 'connected' %}
+            {% if status.classic.state == 'connected' %}
                 <dl class="info-grid">
                     <dt>Device</dt>
                     <dd>{{ status.classic.target_name or 'TNC' }}</dd>
@@ -87,9 +87,9 @@
                     <dt>Channel</dt>
                     <dd>RFCOMM {{ status.classic.rfcomm_channel }}</dd>
                 </dl>
-                {% if status.classic.state.value == 'connecting' %}
+                {% if status.classic.state == 'connecting' %}
                 <p style="color: var(--text-secondary); margin-top: 0.5rem;">Connecting...</p>
-                {% elif status.classic.state.value == 'error' %}
+                {% elif status.classic.state == 'error' %}
                 <p style="color: var(--error); margin-top: 0.5rem;">Connection failed</p>
                 {% else %}
                 <p style="color: var(--text-secondary); margin-top: 0.5rem;">Not connected</p>
@@ -151,19 +151,45 @@
 </div>
 
 <!-- Bridge Active Alert -->
-{% if status.ble.state.value == 'connected' and status.classic.state.value == 'connected' %}
+{% set ble_connected = status.ble.state == 'connected' %}
+{% set classic_connected = status.classic.state == 'connected' %}
+{% set kiss_clients = status.tcp_kiss.client_count | default(0) if status.tcp_kiss else 0 %}
+
+{% if ble_connected and classic_connected %}
 <div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--success);">
     <div class="card__body" style="color: var(--success);">
         Bridge is active! Packets are being forwarded between phone and TNC.
-        {% if status.tcp_kiss and status.tcp_kiss.enabled and status.tcp_kiss.client_count > 0 %}
-        TCP KISS: {{ status.tcp_kiss.client_count }} client{{ 's' if status.tcp_kiss.client_count != 1 }} also receiving data.
+        {% if kiss_clients > 0 %}
+        TCP KISS: {{ kiss_clients }} client{{ 's' if kiss_clients != 1 }} also receiving data.
         {% endif %}
     </div>
 </div>
-{% elif status.ble.state.value != 'connected' and status.classic.state.value != 'connected' %}
+{% elif classic_connected and not ble_connected %}
+<div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--accent);">
+    <div class="card__body" style="color: var(--accent);">
+        TNC connected (Classic Bluetooth).
+        {% if kiss_clients > 0 %}
+        TCP KISS: {{ kiss_clients }} client{{ 's' if kiss_clients != 1 }} connected.
+        {% endif %}
+        {% if not ble_connected %}
+        Waiting for BLE connection from phone.
+        {% endif %}
+    </div>
+</div>
+{% elif ble_connected and not classic_connected %}
+<div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--accent);">
+    <div class="card__body" style="color: var(--accent);">
+        Phone connected via BLE. Waiting for TNC connection.
+    </div>
+</div>
+{% else %}
 <div class="card mt-4" id="bridge-alert" style="border-left: 3px solid var(--warning);">
     <div class="card__body" style="color: var(--warning);">
+        {% if kiss_clients > 0 %}
+        TCP KISS: {{ kiss_clients }} client{{ 's' if kiss_clients != 1 }} connected, but no BLE or TNC connections active.
+        {% else %}
         Both connections are inactive. Connect a phone via BLE and ensure TNC is paired.
+        {% endif %}
     </div>
 </div>
 {% endif %}
