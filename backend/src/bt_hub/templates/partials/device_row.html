@@ -43,21 +43,27 @@
     <button class="btn btn--success btn--sm"
             hx-post="/api/devices/{{ device.mac_address }}/connect"
             hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML">
+            hx-swap="outerHTML"
+            hx-indicator="closest .btn">
+      <span class="htmx-indicator spinner spinner--sm"></span>
       Connect
     </button>
     {% elif device.connected %}
     <button class="btn btn--secondary btn--sm"
             hx-post="/api/devices/{{ device.mac_address }}/disconnect"
             hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML">
+            hx-swap="outerHTML"
+            hx-indicator="closest .btn">
+      <span class="htmx-indicator spinner spinner--sm"></span>
       Disconnect
     </button>
     {% elif not device.paired %}
     <button class="btn btn--primary btn--sm"
             hx-post="/api/devices/{{ device.mac_address }}/pair"
             hx-target="#device-row-{{ device.mac_address | replace(':', '-') }}"
-            hx-swap="outerHTML">
+            hx-swap="outerHTML"
+            hx-indicator="closest .btn">
+      <span class="htmx-indicator spinner spinner--sm"></span>
       Pair
     </button>
     {% endif %}
