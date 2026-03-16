@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
 from bt_hub.api import (
@@ -16,7 +16,7 @@ from bt_hub.api import (
     InvalidMacAddressError,
 )
 from bt_hub.api.adapter import get_bluetooth_manager
-from bt_hub.deps import get_device_store, get_templates
+from bt_hub.deps import get_device_store, get_templates, get_templates_optional
 from bt_hub.models.device import (
     ConnectionState,
     DeviceActionResponse,
@@ -248,6 +248,37 @@ async def toggle_favorite(
     )
 
 
+def _htmx_device_response(
+    request: Request,
+    templates: Jinja2Templates | None,
+    device: DeviceRuntimeState,
+) -> Response | None:
+    """If the request came from HTMX, return the appropriate HTML partial.
+
+    Returns None if this is a regular API call (no HX-Request header)
+    or if templates are not available.
+    """
+    if "hx-request" not in request.headers or templates is None:
+        return None
+
+    target = request.headers.get("hx-target", "")
+    if target.startswith("device-row-"):
+        template_name = "partials/device_row.html"
+    elif target == "body":
+        # Detail page actions target body — redirect back to the device page
+        from starlette.responses import RedirectResponse
+
+        mac = device.mac_address
+        return RedirectResponse(url=f"/devices/{mac}", status_code=303)
+    else:
+        template_name = "partials/device_card.html"
+
+    return templates.TemplateResponse(
+        template_name,
+        {"request": request, "device": device},
+    )
+
+
 @router.delete("/api/devices/{mac_address}")
 async def delete_device(
     mac_address: str,
@@ -262,55 +293,107 @@ async def delete_device(
     return {"status": "deleted", "mac_address": mac}
 
 
-@router.post("/api/devices/{mac_address}/pair", response_model=DeviceActionResponse)
+@router.post("/api/devices/{mac_address}/pair", response_model=None)
 async def pair_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> DeviceActionResponse:
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Pair with a device."""
     mac = _validate_mac(mac_address)
     logger.info("Pairing with device %s", mac)
     await bt.pair_device(mac)
-    # Update store record
     await store.upsert_device(mac)
-    return DeviceActionResponse(mac_address=mac, status="paired")
+
+    stored = await store.get_device(mac)
+    if stored is None:
+        stored = await store.upsert_device(mac)
+
+    try:
+        live = await bt.get_device_state(mac)
+    except (DeviceNotFoundError, BluetoothError):
+        live = None
+
+    device = _build_runtime_state(stored, live)
+    htmx_resp = _htmx_device_response(request, templates, device)
+    if htmx_resp is not None:
+        return htmx_resp
+
+    return JSONResponse(DeviceActionResponse(mac_address=mac, status="paired").model_dump())
 
 
-@router.post("/api/devices/{mac_address}/connect", response_model=DeviceActionResponse)
+@router.post("/api/devices/{mac_address}/connect", response_model=None)
 async def connect_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> DeviceActionResponse:
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Connect to a paired device."""
     mac = _validate_mac(mac_address)
     logger.info("Connecting to device %s", mac)
     await bt.connect_device(mac)
-    # Update last_connected timestamp
     now = datetime.now(UTC).isoformat()
     await store.update_device(mac, last_connected=now)
-    return DeviceActionResponse(mac_address=mac, status="connected")
+
+    stored = await store.get_device(mac)
+    if stored is None:
+        raise DeviceNotFoundError(mac)
+
+    try:
+        live = await bt.get_device_state(mac)
+    except (DeviceNotFoundError, BluetoothError):
+        live = None
+
+    device = _build_runtime_state(stored, live)
+    htmx_resp = _htmx_device_response(request, templates, device)
+    if htmx_resp is not None:
+        return htmx_resp
+
+    return JSONResponse(DeviceActionResponse(mac_address=mac, status="connected").model_dump())
 
 
-@router.post("/api/devices/{mac_address}/disconnect", response_model=DeviceActionResponse)
+@router.post("/api/devices/{mac_address}/disconnect", response_model=None)
 async def disconnect_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-) -> DeviceActionResponse:
+    store: Annotated[DeviceStore, Depends(get_device_store)],
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Disconnect from a device."""
     mac = _validate_mac(mac_address)
     logger.info("Disconnecting device %s", mac)
     await bt.disconnect_device(mac)
-    return DeviceActionResponse(mac_address=mac, status="disconnected")
+
+    stored = await store.get_device(mac)
+    if stored is None:
+        raise DeviceNotFoundError(mac)
+
+    try:
+        live = await bt.get_device_state(mac)
+    except (DeviceNotFoundError, BluetoothError):
+        live = None
+
+    device = _build_runtime_state(stored, live)
+    htmx_resp = _htmx_device_response(request, templates, device)
+    if htmx_resp is not None:
+        return htmx_resp
+
+    return JSONResponse(DeviceActionResponse(mac_address=mac, status="disconnected").model_dump())
 
 
-@router.post("/api/devices/{mac_address}/trust", response_model=DeviceRuntimeState)
+@router.post("/api/devices/{mac_address}/trust", response_model=None)
 async def trust_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> DeviceRuntimeState:
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Trust a device."""
     mac = _validate_mac(mac_address)
     logger.info("Trusting device %s", mac)
@@ -325,15 +408,22 @@ async def trust_device(
     except (DeviceNotFoundError, BluetoothError):
         live = None
 
-    return _build_runtime_state(stored, live)
+    device = _build_runtime_state(stored, live)
+    htmx_resp = _htmx_device_response(request, templates, device)
+    if htmx_resp is not None:
+        return htmx_resp
+
+    return JSONResponse(device.model_dump(mode="json"))
 
 
-@router.post("/api/devices/{mac_address}/untrust", response_model=DeviceRuntimeState)
+@router.post("/api/devices/{mac_address}/untrust", response_model=None)
 async def untrust_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> DeviceRuntimeState:
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Untrust a device."""
     mac = _validate_mac(mac_address)
     logger.info("Untrusting device %s", mac)
@@ -348,18 +438,35 @@ async def untrust_device(
     except (DeviceNotFoundError, BluetoothError):
         live = None
 
-    return _build_runtime_state(stored, live)
+    device = _build_runtime_state(stored, live)
+    htmx_resp = _htmx_device_response(request, templates, device)
+    if htmx_resp is not None:
+        return htmx_resp
+
+    return JSONResponse(device.model_dump(mode="json"))
 
 
-@router.post("/api/devices/{mac_address}/remove")
+@router.post("/api/devices/{mac_address}/remove", response_model=None)
 async def remove_device(
     mac_address: str,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-) -> dict[str, str]:
+    store: Annotated[DeviceStore, Depends(get_device_store)],
+    templates: Annotated[Jinja2Templates | None, Depends(get_templates_optional)],
+) -> object:
     """Remove a device from BlueZ (keep in store for history)."""
     mac = _validate_mac(mac_address)
     logger.info("Removing device %s from BlueZ", mac)
     await bt.remove_device(mac)
+
+    if "hx-request" in request.headers:
+        stored = await store.get_device(mac)
+        if stored:
+            device = _build_runtime_state(stored, None)
+            htmx_resp = _htmx_device_response(request, templates, device)
+            if htmx_resp is not None:
+                return htmx_resp
+
     return {"status": "removed", "mac_address": mac}
 
 

@@ -48,6 +48,11 @@ def get_templates() -> Jinja2Templates:
     return _templates
 
 
+def get_templates_optional() -> Jinja2Templates | None:
+    """Return templates if configured, or None (for use in dual JSON/HTMX endpoints)."""
+    return _templates
+
+
 def set_templates(templates: Jinja2Templates) -> None:
     global _templates
     _templates = templates
