@@ -56,8 +56,27 @@
   </div>
 </div>
 
-<!-- Filter & Sort Bar -->
-<div class="filter-bar">
+<!-- Search & Filter Bar -->
+<div x-data="{ search: '' }"
+     x-effect="
+       const term = search.toLowerCase();
+       document.querySelectorAll('#device-list .device-card, #device-list .device-row').forEach(card => {
+         const text = card.textContent.toLowerCase();
+         card.style.display = text.includes(term) ? '' : 'none';
+       });
+     ">
+
+  <!-- Search Input -->
+  <div class="mb-3">
+    <input type="text"
+           class="form-input"
+           placeholder="Search devices by name or address..."
+           x-model="search"
+           style="width: 100%; padding: 0.625rem 1rem; font-size: 0.9375rem;">
+  </div>
+
+  <!-- Filter & Sort Bar -->
+  <div class="filter-bar">
   <div class="filter-bar__group">
     <button class="filter-bar__btn {% if current_filter == 'all' %}filter-bar__btn--active{% endif %}"
             hx-get="/devices?filter=all"
@@ -123,6 +142,8 @@
   </div>
   {% endif %}
 </div>
+
+</div> <!-- end search/filter x-data wrapper -->
 
 <!-- Help Text -->
 <div class="card mt-4">
