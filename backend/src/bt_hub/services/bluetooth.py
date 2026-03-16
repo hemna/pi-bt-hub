@@ -465,6 +465,27 @@ class BlueZManager:
         try:
             await asyncio.sleep(duration)
             if self._is_scanning:
+                # Snapshot all devices before stopping — BlueZ removes
+                # transient (unpaired) devices after StopDiscovery.
+                try:
+                    devices = await self.get_all_device_states()
+                    for mac, props in devices.items():
+                        await self._event_bus.publish(
+                            Event(
+                                "device_discovered",
+                                {
+                                    "mac_address": mac,
+                                    "name": props.get("name"),
+                                    "alias": props.get("alias"),
+                                    "rssi": props.get("rssi"),
+                                    "paired": props.get("paired", False),
+                                    "connected": props.get("connected", False),
+                                    "device_type": props.get("device_type"),
+                                },
+                            )
+                        )
+                except Exception:
+                    logger.debug("Failed to snapshot devices before stop", exc_info=True)
                 await self.stop_discovery()
         except asyncio.CancelledError:
             pass
@@ -553,11 +574,47 @@ class BlueZManager:
         """Pair with a device."""
         path = _mac_to_device_path(mac, self._adapter_name)
 
-        # Check current state
+        # Check current state — device may have been removed from BlueZ
+        # after a scan stopped.  Do a brief discovery to re-find it.
         try:
             props = await self._get_properties(path, DEVICE_INTERFACE)
-        except BluetoothError as exc:
-            raise DeviceNotFoundError(mac) from exc
+        except BluetoothError:
+            # Device not in BlueZ — start a short scan to re-discover it
+            logger.info("Device %s not in BlueZ, starting brief scan to re-discover", mac)
+            try:
+                await self._call_method(
+                    path=self._adapter_path,
+                    interface=ADAPTER_INTERFACE,
+                    method="StartDiscovery",
+                )
+                # Wait up to 8 seconds for the device to appear
+                for _ in range(16):
+                    await asyncio.sleep(0.5)
+                    try:
+                        props = await self._get_properties(path, DEVICE_INTERFACE)
+                        break  # found it
+                    except BluetoothError:
+                        continue
+                else:
+                    # Clean up scan and raise
+                    with contextlib.suppress(Exception):
+                        await self._call_method(
+                            path=self._adapter_path,
+                            interface=ADAPTER_INTERFACE,
+                            method="StopDiscovery",
+                        )
+                    raise DeviceNotFoundError(mac)
+                # Stop the brief scan
+                with contextlib.suppress(Exception):
+                    await self._call_method(
+                        path=self._adapter_path,
+                        interface=ADAPTER_INTERFACE,
+                        method="StopDiscovery",
+                    )
+            except DeviceNotFoundError:
+                raise
+            except Exception as exc:
+                raise DeviceNotFoundError(mac) from exc
 
         if props.get("Paired", False):
             raise AlreadyPairedError()

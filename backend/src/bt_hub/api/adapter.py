@@ -76,6 +76,19 @@ async def start_scan(
     logger.info("Starting scan for %d seconds", duration)
     await bt.start_discovery(duration_seconds=duration)
 
+    # Upsert all BlueZ-known devices into the store immediately so they
+    # persist even after StopDiscovery removes transient devices.
+    try:
+        live_states = await bt.get_all_device_states()
+        for mac, props in live_states.items():
+            await store.upsert_device(
+                mac,
+                name=props.get("name"),
+                device_type=props.get("device_type"),
+            )
+    except Exception:
+        logger.debug("Failed to upsert devices at scan start", exc_info=True)
+
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
         return templates.TemplateResponse(
