@@ -21,9 +21,7 @@
      ">
   <div class="card__header">
     <h2>Scan for Devices</h2>
-    <template x-if="scanning">
-      <span class="badge badge--pairing">Scanning...</span>
-    </template>
+    <span class="badge badge--pairing" x-show="scanning">Scanning...</span>
   </div>
   <div class="card__body">
     <p style="margin-bottom: 1rem; color: var(--text-secondary);">
@@ -31,27 +29,25 @@
     </p>
     
     <div class="action-group">
-      <template x-if="!scanning">
-        <button class="btn btn--primary"
-                hx-post="/api/scan/start"
-                hx-target="#device-list"
-                hx-swap="innerHTML"
-                hx-indicator=".scan-indicator"
-                @click="scanning = true">
-          Start Scan
-          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
-        </button>
-      </template>
-      <template x-if="scanning">
-        <button class="btn btn--danger"
-                hx-post="/api/scan/stop"
-                hx-target="#scan-status"
-                hx-indicator=".scan-indicator"
-                @click="scanning = false">
-          Stop Scan
-          <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
-        </button>
-      </template>
+      <button class="btn btn--primary"
+              x-show="!scanning"
+              hx-post="/api/scan/start"
+              hx-target="#device-list"
+              hx-swap="innerHTML"
+              hx-indicator=".scan-indicator"
+              @click="scanning = true">
+        Start Scan
+        <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+      </button>
+      <button class="btn btn--danger"
+              x-show="scanning"
+              hx-post="/api/scan/stop"
+              hx-target="#scan-status"
+              hx-indicator=".scan-indicator"
+              @click="scanning = false">
+        Stop Scan
+        <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+      </button>
     </div>
     
     <div id="scan-status" class="mt-3">
