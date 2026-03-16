@@ -4,6 +4,7 @@
      x-data="{
        devices: [],
        scanning: true,
+       countdown: {{ duration | default(10) }},
        init() {
          // Fetch devices BlueZ already knows about so the list isn't empty
          fetch('/api/devices')
@@ -26,11 +27,21 @@
            })
            .catch(() => {});
 
+         // Countdown timer
+         this._timer = setInterval(() => {
+           if (this.countdown > 0) {
+             this.countdown--;
+           } else {
+             clearInterval(this._timer);
+           }
+         }, 1000);
+
          // Fallback: reload the page after scan duration + buffer,
          // in case the WebSocket scan_stopped event is missed.
          setTimeout(() => {
            if (this.scanning) {
              this.scanning = false;
+             clearInterval(this._timer);
              window.location.reload();
            }
          }, {{ (duration | default(10)) * 1000 + 3000 }});
@@ -64,6 +75,8 @@
          }
        } else if ($event.detail.type === 'scan_stopped') {
          scanning = false;
+         countdown = 0;
+         if (this._timer) clearInterval(this._timer);
          window.location.reload();
        }
      ">
@@ -76,7 +89,10 @@
     <template x-if="!scanning">
       <span style="color: var(--green);">&#10003;</span>
     </template>
-    <strong x-text="scanning ? 'Scanning for nearby devices...' : 'Scan complete'"></strong>
+    <strong>
+      <span x-show="scanning" x-text="'Scanning... ' + countdown + 's remaining'"></span>
+      <span x-show="!scanning">Scan complete</span>
+    </strong>
     <span class="text-secondary" style="margin-left: auto;" x-text="devices.length + ' device(s) found'"></span>
   </div>
 
