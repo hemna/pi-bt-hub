@@ -68,7 +68,18 @@
     document.addEventListener('htmx:responseError', (e) => {
       const store = Alpine.store('toasts');
       if (store) {
-        store.error('Request failed. Please try again.');
+        let msg = 'Request failed. Please try again.';
+        try {
+          const data = JSON.parse(e.detail.xhr.responseText);
+          if (data.detail && data.detail.message) {
+            msg = data.detail.message;
+          } else if (data.message) {
+            msg = data.message;
+          } else if (typeof data.detail === 'string') {
+            msg = data.detail;
+          }
+        } catch (_) { /* response wasn't JSON, use default */ }
+        store.error(msg);
       }
     });
 
