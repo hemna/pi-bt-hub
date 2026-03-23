@@ -20,6 +20,7 @@ from bt_hub.deps import (
     get_event_bus,
     get_templates,
     set_bridge_proxy,
+    set_bridge_service,
     set_bt_bridge_client,
     set_device_store,
     set_event_bus,
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     from bt_hub.services.log_handler import setup_sse_logging
+
     setup_sse_logging(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 
     store = DeviceStore(settings.db_path)
@@ -58,18 +60,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     set_event_bus(bus)
 
     # Legacy bridge client (for dashboard status probe)
-    bridge_client = BtBridgeClient(
-        settings.bridge_url if settings.bridge_enabled else None
-    )
+    bridge_client = BtBridgeClient(settings.bridge_url if settings.bridge_enabled else None)
     set_bt_bridge_client(bridge_client)
 
     # Bridge proxy (only when bridge is enabled)
     bridge_proxy = None
     if settings.bridge_enabled:
         from bt_hub.services.bridge_proxy import BridgeProxy
+        from bt_hub.services.systemd_service import SystemdService
+
         bridge_proxy = BridgeProxy(settings.bridge_url)
         await bridge_proxy.startup()
         set_bridge_proxy(bridge_proxy)
+
+        bridge_service = SystemdService("bt-bridge.service")
+        set_bridge_service(bridge_service)
+
         logger.info("Bridge proxy enabled: %s", settings.bridge_url)
 
     template_dir = Path(__file__).parent / "templates"
@@ -125,11 +131,12 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
         errors = exc.errors()
         messages = [
-            f"{'.'.join(str(loc) for loc in e.get('loc', []))}: {e.get('msg', '')}"
-            for e in errors
+            f"{'.'.join(str(loc) for loc in e.get('loc', []))}: {e.get('msg', '')}" for e in errors
         ]
         return JSONResponse(
             status_code=422,
@@ -151,6 +158,7 @@ def create_app() -> FastAPI:
     # Conditionally include bridge routes
     if settings.bridge_enabled:
         from bt_hub.api.bridge import router as bridge_router
+
         app.include_router(bridge_router)
 
     return app

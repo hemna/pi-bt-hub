@@ -95,6 +95,8 @@ async def test_client(
     mock_bt_bridge_client: BtBridgeClient,
 ) -> AsyncIterator[AsyncClient]:
     """Provide an async HTTP test client with mocked dependencies."""
+    from fastapi.templating import Jinja2Templates
+
     # Import main first to avoid circular import (main.create_app imports adapter.router)
     from bt_hub.api.adapter import get_bluetooth_manager
     from bt_hub.main import (
@@ -103,7 +105,14 @@ async def test_client(
         get_event_bus,
     )
 
-    from bt_hub.deps import get_bt_bridge_client
+    from bt_hub.deps import get_bt_bridge_client, get_templates, set_templates
+
+    # Initialize templates before creating the app
+    template_dir = (
+        Path(__file__).parent.parent / "backend" / "src" / "bt_hub" / "templates"
+    )
+    templates = Jinja2Templates(directory=str(template_dir))
+    set_templates(templates)
 
     app = create_app()
 
@@ -112,6 +121,7 @@ async def test_client(
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_bluetooth_manager] = lambda: mock_bluetooth_manager
     app.dependency_overrides[get_bt_bridge_client] = lambda: mock_bt_bridge_client
+    app.dependency_overrides[get_templates] = lambda: templates
 
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as client:

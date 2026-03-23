@@ -30,8 +30,17 @@
                 hx-target="#detail-favorite-{{ device.mac_address | replace(':', '-') }}"
                 hx-swap="outerHTML"
                 id="detail-favorite-{{ device.mac_address | replace(':', '-') }}"
-                title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
+                data-tooltip="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
           {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
+        </button>
+        <button class="ignore-btn {% if device.is_ignored %}ignore-btn--active{% endif %}"
+                hx-post="/api/devices/{{ device.mac_address }}/ignore"
+                hx-vals='{"is_ignored": "{{ "false" if device.is_ignored else "true" }}"}'
+                hx-target="#detail-ignored-{{ device.mac_address | replace(':', '-') }}"
+                hx-swap="outerHTML"
+                id="detail-ignored-{{ device.mac_address | replace(':', '-') }}"
+                data-tooltip="{{ 'Stop ignoring' if device.is_ignored else 'Ignore this device' }}">
+          {% if device.is_ignored %}&#128065;{% else %}&#128064;{% endif %}
         </button>
       </div>
       <div class="flex items-center gap-2 mt-2">

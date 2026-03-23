@@ -3,83 +3,110 @@
 <div class="scan-progress"
      x-data="{
        devices: [],
+       ignoredMacs: new Set(),
        scanning: true,
        countdown: {{ duration | default(10) }},
        init() {
-         // Fetch devices BlueZ already knows about so the list isn't empty
-         fetch('/api/devices')
-           .then(r => r.json())
-           .then(data => {
-             if (data.devices) {
-               data.devices.forEach(d => {
-                 if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
-                   this.devices.push({
-                     mac_address: d.mac_address,
-                     name: d.alias || d.name || d.mac_address,
-                     rssi: d.rssi || null,
-                     paired: d.paired || false,
-                     connected: d.connected || false,
-                     device_type: d.device_type || null
-                   });
-                 }
-               });
-             }
-           })
-           .catch(() => {});
+          // Fetch devices BlueZ already knows about that have RSSI (actively seen)
+          fetch('/api/devices')
+            .then(r => r.json())
+            .then(data => {
+              if (data.devices) {
+                data.devices.forEach(d => {
+                  // Track ignored MACs so we can filter WebSocket events
+                  if (d.is_ignored) {
+                    this.ignoredMacs.add(d.mac_address);
+                  }
+                  // Only add devices that have RSSI (actively being seen) and are NOT ignored
+                  if (d.rssi && !d.is_ignored && !this.devices.find(dev => dev.mac_address === d.mac_address)) {
+                    this.devices.push({
+                      mac_address: d.mac_address,
+                      name: d.alias || d.name || d.mac_address,
+                      rssi: d.rssi,
+                      paired: d.paired || false,
+                      connected: d.connected || false,
+                      device_type: d.device_type || null,
+                      is_favorite: d.is_favorite || false,
+                      is_ignored: false
+                    });
+                  }
+                });
+              }
+            })
+            .catch(() => {});
 
-         // Countdown timer
-         this._timer = setInterval(() => {
-           if (this.countdown > 0) {
-             this.countdown--;
-           } else {
-             clearInterval(this._timer);
-           }
-         }, 1000);
+          // Also fetch ignored devices specifically to populate ignoredMacs
+          fetch('/api/devices?filter=ignored')
+            .then(r => r.json())
+            .then(data => {
+              if (data.devices) {
+                data.devices.forEach(d => {
+                  this.ignoredMacs.add(d.mac_address);
+                });
+              }
+            })
+            .catch(() => {});
 
-         // Fallback: reload the page after scan duration + buffer,
-         // in case the WebSocket scan_stopped event is missed.
-         setTimeout(() => {
-           if (this.scanning) {
-             this.scanning = false;
-             clearInterval(this._timer);
-             window.location.reload();
-           }
-         }, {{ (duration | default(10)) * 1000 + 3000 }});
-       }
+          // Countdown timer
+          this._timer = setInterval(() => {
+            if (this.countdown > 0) {
+              this.countdown--;
+            } else {
+              clearInterval(this._timer);
+            }
+          }, 1000);
+
+          // Fallback: mark scan as complete after duration + buffer,
+          // in case the WebSocket scan_stopped event is missed.
+          setTimeout(() => {
+            if (this.scanning) {
+              this.scanning = false;
+              clearInterval(this._timer);
+              // Don't reload - keep showing scan results
+            }
+          }, {{ (duration | default(10)) * 1000 + 3000 }});
+        }
      }"
-     @bt-ws-message.window="
-       if ($event.detail.type === 'device_discovered') {
-         const d = $event.detail;
-         const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
-         if (idx === -1) {
+      @bt-ws-message.window="
+        if ($event.detail.type === 'device_discovered') {
+          const d = $event.detail;
+          // Only show devices with RSSI (actively being seen) and NOT ignored
+          if (!d.rssi) return;
+          if (ignoredMacs.has(d.mac_address)) return;
+          const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
+          if (idx === -1) {
            devices.unshift({
-             mac_address: d.mac_address,
-             name: d.name || d.alias || d.mac_address,
-             rssi: d.rssi,
-             paired: d.paired || false,
-             connected: d.connected || false,
-             device_type: d.device_type || null
-           });
-         } else {
-           // Update RSSI for already-seen device
-           if (d.rssi) devices[idx].rssi = d.rssi;
-         }
-       } else if ($event.detail.type === 'device_updated') {
-         const d = $event.detail;
-         const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
-         if (idx !== -1) {
-           if (d.rssi) devices[idx].rssi = d.rssi;
-           if (d.name) devices[idx].name = d.name;
-           if (d.connected !== undefined) devices[idx].connected = d.connected;
-           if (d.paired !== undefined) devices[idx].paired = d.paired;
-         }
-       } else if ($event.detail.type === 'scan_stopped') {
-         scanning = false;
-         countdown = 0;
-         if (this._timer) clearInterval(this._timer);
-         window.location.reload();
-       }
-     ">
+              mac_address: d.mac_address,
+              name: d.name || d.alias || d.mac_address,
+              rssi: d.rssi,
+              paired: d.paired || false,
+              connected: d.connected || false,
+              device_type: d.device_type || null,
+              is_favorite: d.is_favorite || false,
+              is_ignored: false
+            });
+          } else {
+            // Update RSSI for already-seen device
+            devices[idx].rssi = d.rssi;
+          }
+        } else if ($event.detail.type === 'device_updated') {
+          const d = $event.detail;
+          const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
+          if (idx !== -1 && d.rssi) {
+            devices[idx].rssi = d.rssi;
+            if (d.name) devices[idx].name = d.name;
+            if (d.connected !== undefined) devices[idx].connected = d.connected;
+            if (d.paired !== undefined) devices[idx].paired = d.paired;
+          }
+        } else if ($event.detail.type === 'scan_stopped') {
+          scanning = false;
+          countdown = 0;
+          if (this._timer) clearInterval(this._timer);
+          // Update the global store so the button updates
+          if (Alpine.store('scan')) Alpine.store('scan').stop();
+          // Don't reload - keep showing scan results
+        }
+      ">
 
   <!-- Scan status bar -->
   <div class="flex items-center gap-2 mb-4" style="padding: 0.75rem 1rem; background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border-color);">
@@ -118,17 +145,57 @@
                 <span class="badge badge--disconnected">Discovered</span>
               </template>
               <template x-if="device.rssi">
-                <span class="badge" style="font-size: 0.75rem;"
-                      :title="device.rssi + ' dBm'">
-                  <span x-text="
-                    device.rssi >= -50 ? '\u2582\u2584\u2586\u2588' :
-                    device.rssi >= -70 ? '\u2582\u2584\u2586' :
-                    device.rssi >= -85 ? '\u2582\u2584' : '\u2582'
-                  " style="letter-spacing: 1px;"></span>
-                  <span x-text="device.rssi + ' dBm'" style="margin-left: 0.25rem;"></span>
+                <span class="signal-badge" :data-tooltip="device.rssi + ' dBm'">
+                  <span class="signal-meter"
+                        :class="{
+                          'signal-meter--excellent': device.rssi >= -50,
+                          'signal-meter--good': device.rssi >= -70 && device.rssi < -50,
+                          'signal-meter--fair': device.rssi >= -85 && device.rssi < -70,
+                          'signal-meter--weak': device.rssi < -85
+                        }">
+                    <span class="signal-meter__bar" :class="{ 'signal-meter__bar--active': device.rssi >= -100 }"></span>
+                    <span class="signal-meter__bar" :class="{ 'signal-meter__bar--active': device.rssi >= -85 }"></span>
+                    <span class="signal-meter__bar" :class="{ 'signal-meter__bar--active': device.rssi >= -70 }"></span>
+                    <span class="signal-meter__bar" :class="{ 'signal-meter__bar--active': device.rssi >= -50 }"></span>
+                  </span>
+                  <span x-text="device.rssi + 'dBm'"></span>
                 </span>
               </template>
             </div>
+          </div>
+
+          <div class="device-card__actions">
+            <button class="favorite-btn"
+                    :class="{ 'favorite-btn--active': device.is_favorite }"
+                    :data-tooltip="device.is_favorite ? 'Remove from favorites' : 'Add to favorites'"
+                    @click="
+                      const newVal = !device.is_favorite;
+                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/favorite', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'is_favorite=' + newVal
+                      }).then(r => { if (r.ok) device.is_favorite = newVal; });
+                    ">
+              <span x-text="device.is_favorite ? '★' : '☆'"></span>
+            </button>
+            <button class="ignore-btn"
+                    :data-tooltip="'Ignore this device'"
+                    @click="
+                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/ignore', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'is_ignored=true'
+                      }).then(r => {
+                        if (r.ok) {
+                          // Add to ignored set and remove from visible list
+                          ignoredMacs.add(device.mac_address);
+                          const idx = devices.findIndex(d => d.mac_address === device.mac_address);
+                          if (idx !== -1) devices.splice(idx, 1);
+                        }
+                      });
+                    ">
+              <span>👀</span>
+            </button>
           </div>
         </div>
         <div class="device-card__bottom">

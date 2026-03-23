@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend" / "src"))
 
 from bt_hub.services.bridge_proxy import BridgeProxy
 
@@ -18,11 +24,13 @@ if TYPE_CHECKING:
 def _make_mock_proxy() -> MagicMock:
     """Create a mock BridgeProxy."""
     proxy = MagicMock(spec=BridgeProxy)
-    proxy.get_status = AsyncMock(return_value={
-        "ble": {"state": "idle"},
-        "classic": {"state": "idle"},
-        "uptime_seconds": 100,
-    })
+    proxy.get_status = AsyncMock(
+        return_value={
+            "ble": {"state": "idle"},
+            "classic": {"state": "idle"},
+            "uptime_seconds": 100,
+        }
+    )
     proxy.get_stats = AsyncMock(return_value={"packets_tx": 0, "errors": 0})
     proxy.get_settings = AsyncMock(return_value={"device_name": "PiBridge"})
     proxy.update_settings = AsyncMock(return_value={"status": "saved"})
@@ -41,8 +49,23 @@ def _make_mock_proxy() -> MagicMock:
 @pytest_asyncio.fixture
 async def bridge_client() -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
     """Create a test client with bridge_enabled=True and mocked proxy."""
-    import os
+    # Set env var BEFORE importing config
     os.environ["BT_HUB_BRIDGE_ENABLED"] = "true"
+
+    # Clear the settings cache to pick up the new env var
+    from bt_hub.config import get_settings
+
+    get_settings.cache_clear()
+
+    # Also need to initialize templates
+    from fastapi.templating import Jinja2Templates
+    from bt_hub.deps import set_templates
+
+    template_dir = (
+        Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
+    )
+    templates = Jinja2Templates(directory=str(template_dir))
+    set_templates(templates)
 
     try:
         from bt_hub.main import create_app
@@ -51,12 +74,15 @@ async def bridge_client() -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
         app = create_app()
         mock_proxy = _make_mock_proxy()
         app.dependency_overrides[deps.get_bridge_proxy] = lambda: mock_proxy
+        app.dependency_overrides[deps.get_templates] = lambda: templates
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client, mock_proxy
     finally:
         del os.environ["BT_HUB_BRIDGE_ENABLED"]
+        # Clear cache again for other tests
+        get_settings.cache_clear()
 
 
 class TestBridgeStatusAPI:
@@ -91,7 +117,9 @@ class TestBridgeSettingsAPI:
 
     async def test_update_settings(self, bridge_client: tuple) -> None:
         client, mock_proxy = bridge_client
-        resp = await client.post("/api/bridge/settings", json={"device_name": "NewName"})
+        resp = await client.post(
+            "/api/bridge/settings", json={"device_name": "NewName"}
+        )
         assert resp.status_code == 200
 
 
@@ -120,7 +148,9 @@ class TestBridgeTncAPI:
 
     async def test_add_tnc(self, bridge_client: tuple) -> None:
         client, mock_proxy = bridge_client
-        resp = await client.post("/api/bridge/tnc", json={"address": "11:22:33:44:55:66"})
+        resp = await client.post(
+            "/api/bridge/tnc", json={"address": "11:22:33:44:55:66"}
+        )
         assert resp.status_code == 200
         mock_proxy.add_tnc.assert_awaited_once()
 
@@ -137,7 +167,9 @@ class TestBridgeTncAPI:
             json={"name": "Updated"},
         )
         assert resp.status_code == 200
-        mock_proxy.update_tnc.assert_awaited_once_with("AA:BB:CC:DD:EE:FF", {"name": "Updated"})
+        mock_proxy.update_tnc.assert_awaited_once_with(
+            "AA:BB:CC:DD:EE:FF", {"name": "Updated"}
+        )
 
     async def test_delete_tnc(self, bridge_client: tuple) -> None:
         client, mock_proxy = bridge_client

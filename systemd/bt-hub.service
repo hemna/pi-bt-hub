@@ -3,8 +3,6 @@ Description=Pi BT Hub - Unified Bluetooth Management Web UI
 Documentation=https://github.com/hemna/pi-bt-hub
 After=bluetooth.target dbus.service network.target
 Requires=bluetooth.target dbus.service
-# Uncomment if using bt-bridge integration
-#Wants=bt-bridge.service
 
 [Service]
 Type=simple
@@ -16,16 +14,25 @@ RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
-# Run as root for Bluetooth access, or add user to bluetooth group
-User=root
-Group=root
+# Run as pi user with bluetooth group access
+User=pi
+Group=pi
+SupplementaryGroups=bluetooth
 
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/home/pi/pi-bt-hub/backend/src
 Environment=BT_HUB_DB_PATH=/home/pi/pi-bt-hub/data/bt_hub.db
 Environment=BT_HUB_LOG_LEVEL=INFO
 
-# Bridge integration (set to true if using bt-bridge daemon)
+# Bridge integration disabled by default
+# To enable, run: sudo systemctl edit bt-hub
+# And add:
+#   [Unit]
+#   Wants=bt-bridge.service
+#   After=bt-bridge.service
+#   [Service]
+#   Environment=BT_HUB_BRIDGE_ENABLED=true
+
 Environment=BT_HUB_BRIDGE_ENABLED=false
 Environment=BT_HUB_BRIDGE_URL=http://localhost:8081
 

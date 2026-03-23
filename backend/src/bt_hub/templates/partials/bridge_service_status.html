@@ -1,0 +1,101 @@
+{# Bridge service status partial - returned after service control actions #}
+<div id="bridge-service-status">
+  {% if result and not result.success %}
+  <div class="alert alert--error mb-3">
+    {{ result.message }}
+  </div>
+  {% endif %}
+
+  {% if install_result %}
+  <div class="alert {% if install_result.success %}alert--success{% else %}alert--error{% endif %} mb-3">
+    {{ install_result.message }}
+    {% if install_result.output %}
+    <details style="margin-top: 0.5rem;">
+      <summary style="cursor: pointer; font-size: 0.85rem;">View output</summary>
+      <pre style="font-size: 0.75rem; max-height: 200px; overflow-y: auto; margin-top: 0.5rem;">{{ install_result.output }}</pre>
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="info-grid mb-4">
+    <dt>Service</dt>
+    <dd>
+      {% if service_status.state == 'active' %}
+        <span class="badge badge--on">Running</span>
+      {% elif service_status.state == 'inactive' %}
+        <span class="badge badge--off">Stopped</span>
+      {% elif service_status.state == 'failed' %}
+        <span class="badge badge--error">Failed</span>
+      {% elif service_status.state == 'not-found' %}
+        <span class="badge badge--off">Not Installed</span>
+      {% else %}
+        <span class="badge badge--off">{{ service_status.state }}</span>
+      {% endif %}
+      {% if service_status.sub_state and service_status.state != 'not-found' %}
+        <span class="text-muted text-sm">({{ service_status.sub_state }})</span>
+      {% endif %}
+    </dd>
+
+    {% if service_status.enabled is not none and service_status.state != 'not-found' %}
+    <dt>Enabled</dt>
+    <dd>
+      {% if service_status.enabled %}
+        <span class="badge badge--on">Yes</span>
+      {% else %}
+        <span class="badge badge--off">No</span>
+      {% endif %}
+    </dd>
+    {% endif %}
+  </div>
+
+  <div class="action-group">
+    {% if service_status.state == 'not-found' %}
+      <button class="btn btn--primary"
+              hx-post="/api/bridge/service/install"
+              hx-target="#bridge-install-output"
+              hx-swap="innerHTML"
+              hx-on::before-request="showBridgeInstallModal()"
+              hx-on::after-request="if(event.detail.successful) { setTimeout(function() { window.location.reload(); }, 2000); }">
+        Install bt-bridge
+        <span class="spinner spinner--sm htmx-indicator install-indicator"></span>
+      </button>
+    {% elif service_status.state in ['inactive', 'failed'] %}
+      <button class="btn btn--primary"
+              hx-post="/api/bridge/service/start"
+              hx-target="#bridge-service-status"
+              hx-swap="outerHTML"
+              hx-indicator=".service-indicator">
+        Start
+        <span class="spinner spinner--sm htmx-indicator service-indicator"></span>
+      </button>
+    {% else %}
+      <button class="btn btn--secondary"
+              hx-post="/api/bridge/service/stop"
+              hx-target="#bridge-service-status"
+              hx-swap="outerHTML"
+              hx-indicator=".service-indicator">
+        Stop
+        <span class="spinner spinner--sm htmx-indicator service-indicator"></span>
+      </button>
+      <button class="btn btn--secondary"
+              hx-post="/api/bridge/service/restart"
+              hx-target="#bridge-service-status"
+              hx-swap="outerHTML"
+              hx-indicator=".service-indicator">
+        Restart
+        <span class="spinner spinner--sm htmx-indicator service-indicator"></span>
+      </button>
+    {% endif %}
+    
+    <button class="btn btn--secondary"
+            hx-get="/api/bridge/service/logs?lines=100"
+            hx-target="#bridge-logs-content"
+            hx-swap="innerHTML"
+            hx-indicator=".logs-indicator"
+            onclick="document.getElementById('bridge-logs').style.display='block'">
+      View Logs
+      <span class="spinner spinner--sm htmx-indicator logs-indicator"></span>
+    </button>
+  </div>
+</div>

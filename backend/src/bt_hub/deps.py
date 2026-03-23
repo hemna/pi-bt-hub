@@ -15,12 +15,14 @@ if TYPE_CHECKING:
     from bt_hub.services.bt_bridge_client import BtBridgeClient
     from bt_hub.services.device_store import DeviceStore
     from bt_hub.services.event_bus import EventBus
+    from bt_hub.services.systemd_service import SystemdService
 
 _device_store: DeviceStore | None = None
 _event_bus: EventBus | None = None
 _templates: Jinja2Templates | None = None
 _bt_bridge_client: BtBridgeClient | None = None
 _bridge_proxy: BridgeProxy | None = None
+_bridge_service: SystemdService | None = None
 
 
 def get_device_store() -> DeviceStore:
@@ -76,3 +78,13 @@ def get_bridge_proxy() -> BridgeProxy:
 def set_bridge_proxy(proxy: BridgeProxy) -> None:
     global _bridge_proxy
     _bridge_proxy = proxy
+
+
+def get_bridge_service() -> SystemdService:
+    assert _bridge_service is not None
+    return _bridge_service
+
+
+def set_bridge_service(service: SystemdService) -> None:
+    global _bridge_service
+    _bridge_service = service

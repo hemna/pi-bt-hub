@@ -62,6 +62,13 @@
         warning(msg) { this.add(msg, 'warning'); },
         info(msg)    { this.add(msg, 'info'); }
       });
+
+      // Scan state store - shared across components
+      Alpine.store('scan', {
+        active: false,
+        start() { this.active = true; },
+        stop() { this.active = false; }
+      });
     });
 
     /* Listen for HTMX events and show toasts on errors */
@@ -88,6 +95,16 @@
       try {
         const data = JSON.parse(e.detail.message);
         window.dispatchEvent(new CustomEvent('bt-ws-message', { detail: data }));
+
+        /* Update scan store based on events */
+        const scanStore = Alpine.store('scan');
+        if (scanStore) {
+          if (data.type === 'scan_started') {
+            scanStore.start();
+          } else if (data.type === 'scan_stopped') {
+            scanStore.stop();
+          }
+        }
 
         /* Auto-show toasts for certain event types */
         const store = Alpine.store('toasts');

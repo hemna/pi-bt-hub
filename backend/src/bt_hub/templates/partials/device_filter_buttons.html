@@ -1,0 +1,40 @@
+{# Device filter buttons partial - used for updating counts via HTMX OOB #}
+
+<div class="filter-bar__group" id="device-filter-buttons" hx-swap-oob="true">
+  <button class="filter-bar__btn {% if current_filter == 'all' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=all"
+          hx-target="body"
+          hx-push-url="true">
+    All ({{ device_count | default(0) }})
+  </button>
+  <button class="filter-bar__btn {% if current_filter == 'paired' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=paired"
+          hx-target="body"
+          hx-push-url="true">
+    Paired ({{ paired_count | default(0) }})
+  </button>
+  <button class="filter-bar__btn {% if current_filter == 'connected' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=connected"
+          hx-target="body"
+          hx-push-url="true">
+    Connected ({{ connected_count | default(0) }})
+  </button>
+  <button class="filter-bar__btn {% if current_filter == 'favorites' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=favorites"
+          hx-target="body"
+          hx-push-url="true">
+    Favorites ({{ favorite_count | default(0) }})
+  </button>
+  <button class="filter-bar__btn {% if current_filter == 'history' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=history"
+          hx-target="body"
+          hx-push-url="true">
+    History ({{ history_count | default(0) }})
+  </button>
+  <button class="filter-bar__btn {% if current_filter == 'ignored' %}filter-bar__btn--active{% endif %}"
+          hx-get="/devices?filter=ignored"
+          hx-target="body"
+          hx-push-url="true">
+    Ignored ({{ ignored_count | default(0) }})
+  </button>
+</div>

@@ -97,13 +97,16 @@ def _build_runtime_state(
         last_seen=last_seen or datetime.now(UTC),
         last_connected=last_connected,
         is_favorite=bool(stored.get("is_favorite", False)),
+        is_ignored=bool(stored.get("is_ignored", False)),
         notes=stored.get("notes"),
         paired=paired,
         connected=connected,
         trusted=trusted,
         rssi=rssi,
         connection_state=connection_state,
-        in_range=live is not None,
+        # Device is "in range" only if we have RSSI (actively being seen)
+        # or if it's currently connected
+        in_range=rssi is not None or connected,
     )
 
 
@@ -114,7 +117,7 @@ def _build_runtime_state(
 async def list_devices(
     store: Annotated[DeviceStore, Depends(get_device_store)],
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-    filter: str = Query(default="all", pattern="^(all|paired|connected|favorites)$"),
+    filter: str = Query(default="all", pattern="^(all|paired|connected|favorites|ignored)$"),
     sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
 ) -> DeviceListResponse:
     """List all devices, merging stored data with live BlueZ state."""
@@ -124,9 +127,12 @@ async def list_devices(
     except BluetoothError:
         live_states = {}
 
-    # Get stored devices
-    store_filter = "favorites" if filter == "favorites" else "all"
-    stored_devices = await store.get_all_devices(filter_type=store_filter, sort_by=sort)
+    # Get stored devices - exclude ignored unless specifically filtering for them
+    store_filter = filter if filter in ("favorites", "ignored") else "all"
+    include_ignored = filter == "ignored"  # Only show ignored devices on the Ignored filter
+    stored_devices = await store.get_all_devices(
+        filter_type=store_filter, sort_by=sort, include_ignored=include_ignored
+    )
 
     # Upsert any BlueZ-known devices not yet in the store
     stored_macs = {d["mac_address"] for d in stored_devices}
@@ -186,7 +192,7 @@ async def update_device(
     store: Annotated[DeviceStore, Depends(get_device_store)],
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
 ) -> DeviceRuntimeState:
-    """Update user-editable fields on a device (alias, is_favorite, notes)."""
+    """Update user-editable fields on a device (alias, is_favorite, is_ignored, notes)."""
     mac = _validate_mac(mac_address)
     logger.info("Updating device %s: %s", mac, body.model_dump(exclude_none=True))
 
@@ -195,6 +201,8 @@ async def update_device(
         update_fields["alias"] = body.alias
     if body.is_favorite is not None:
         update_fields["is_favorite"] = body.is_favorite
+    if body.is_ignored is not None:
+        update_fields["is_ignored"] = body.is_ignored
     if body.notes is not None:
         update_fields["notes"] = body.notes
 
@@ -236,16 +244,212 @@ async def toggle_favorite(
 
     # Determine which partial to return based on the HTMX target
     target = request.headers.get("hx-target", "")
+
+    # If on detail page, just return the button
+    if target.startswith("detail-favorite-"):
+        return templates.TemplateResponse(
+            "partials/favorite_button_detail.html",
+            {"request": request, "device": device},
+        )
+
+    # Check current filter to determine if device should be hidden
+    current_url = request.headers.get("hx-current-url", "")
+    current_filter = "all"
+    if "filter=paired" in current_url:
+        current_filter = "paired"
+    elif "filter=connected" in current_url:
+        current_filter = "connected"
+    elif "filter=favorites" in current_url:
+        current_filter = "favorites"
+    elif "filter=ignored" in current_url:
+        current_filter = "ignored"
+    elif "filter=history" in current_url:
+        current_filter = "history"
+
+    # Determine if device should be hidden from current view
+    should_hide = False
+    if current_filter == "favorites" and not device.is_favorite:
+        # Un-favoriting from favorites view -> hide
+        should_hide = True
+    elif current_filter == "all" and not device.in_range:
+        # "all" only shows in-range devices
+        should_hide = True
+    elif current_filter == "history" and device.in_range:
+        # "history" only shows out-of-range devices
+        should_hide = True
+
+    if should_hide:
+        return Response(content="", status_code=200, media_type="text/html")
+
+    # Return the updated card/row
     if target.startswith("device-row-"):
         template_name = "partials/device_row.html"
-    elif target.startswith("detail-favorite-"):
-        template_name = "partials/favorite_button_detail.html"
     else:
         template_name = "partials/device_card.html"
 
     return templates.TemplateResponse(
         template_name,
         {"request": request, "device": device},
+    )
+
+
+@router.post("/api/devices/{mac_address}/ignore")
+async def toggle_ignored(
+    mac_address: str,
+    request: Request,
+    store: Annotated[DeviceStore, Depends(get_device_store)],
+    bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+    is_ignored: bool = Form(...),
+) -> Response:
+    """Toggle ignored status on a device (HTMX endpoint, returns HTML partial).
+
+    When ignoring a device from a non-ignored view, returns empty content to hide the card.
+    When un-ignoring from the ignored view, returns empty content to hide the card.
+    Also includes out-of-band update for filter button counts.
+    """
+    mac = _validate_mac(mac_address)
+    logger.info("Setting ignored=%s for device %s", is_ignored, mac)
+
+    updated = await store.update_device(mac, is_ignored=is_ignored)
+    if updated is None:
+        raise DeviceNotFoundError(mac)
+
+    # Get live state for this device
+    try:
+        live = await bt.get_device_state(mac)
+    except (DeviceNotFoundError, BluetoothError):
+        live = None
+
+    device = _build_runtime_state(updated, live)
+
+    # Check current filter from URL
+    current_url = request.headers.get("hx-current-url", "")
+    on_devices_page = "/devices" in current_url
+
+    # Parse current filter
+    current_filter = "all"
+    if "filter=paired" in current_url:
+        current_filter = "paired"
+    elif "filter=connected" in current_url:
+        current_filter = "connected"
+    elif "filter=favorites" in current_url:
+        current_filter = "favorites"
+    elif "filter=ignored" in current_url:
+        current_filter = "ignored"
+    elif "filter=history" in current_url:
+        current_filter = "history"
+
+    # Determine the HTMX target
+    target = request.headers.get("hx-target", "")
+
+    # If on detail page (targeting the button itself), just update the button
+    if target.startswith("detail-ignored-"):
+        return templates.TemplateResponse(
+            "partials/ignored_button_detail.html",
+            {"request": request, "device": device},
+        )
+
+    # Calculate updated counts for filter buttons (only if on devices page)
+    filter_buttons_html = ""
+    if on_devices_page:
+        # Get all devices and live states for counting
+        all_devices = await store.get_all_devices(include_ignored=True)
+        try:
+            live_states = await bt.get_all_device_states()
+        except BluetoothError:
+            live_states = {}
+
+        # Count stats (matching the logic in devices_page)
+        paired_count = 0
+        connected_count = 0
+        favorite_count = 0
+        ignored_count = 0
+        in_range_count = 0
+        history_count = 0
+
+        for d in all_devices:
+            d_mac = str(d["mac_address"])
+            d_live = live_states.get(d_mac)
+            d_runtime = _build_runtime_state(d, d_live)
+
+            if d_runtime.is_ignored:
+                ignored_count += 1
+                continue
+
+            # Count in-range vs history (non-ignored only)
+            if d_runtime.in_range:
+                in_range_count += 1
+                if d_runtime.paired:
+                    paired_count += 1
+                if d_runtime.connected:
+                    connected_count += 1
+                if d_runtime.is_favorite:
+                    favorite_count += 1
+            else:
+                history_count += 1
+
+        # Render the filter buttons partial
+        filter_buttons_html = templates.get_template("partials/device_filter_buttons.html").render(
+            request=request,
+            device_count=in_range_count,
+            paired_count=paired_count,
+            connected_count=connected_count,
+            favorite_count=favorite_count,
+            ignored_count=ignored_count,
+            history_count=history_count,
+            current_filter=current_filter,
+        )
+
+    # Determine if the device should be hidden from current view
+    # Rules:
+    # - Ignoring from any non-ignored view -> hide
+    # - Un-ignoring from ignored view -> hide (device leaves the ignored list)
+    # - "all" filter only shows in-range devices -> hide if not in_range
+    # - "history" filter only shows out-of-range devices -> hide if in_range
+    # - "paired" filter -> hide if not paired
+    # - "connected" filter -> hide if not connected
+    # - "favorites" filter -> hide if not favorite
+    should_hide = False
+
+    if is_ignored and current_filter != "ignored":
+        # Ignoring a device from a non-ignored view -> hide it
+        should_hide = True
+    elif not is_ignored and current_filter == "ignored":
+        # Un-ignoring from the ignored view -> hide it (it's no longer ignored)
+        should_hide = True
+    elif current_filter == "all" and not device.in_range:
+        # "all" only shows in-range devices
+        should_hide = True
+    elif current_filter == "history" and device.in_range:
+        # "history" only shows out-of-range devices
+        should_hide = True
+    elif (
+        (current_filter == "paired" and not device.paired)
+        or (current_filter == "connected" and not device.connected)
+        or (current_filter == "favorites" and not device.is_favorite)
+    ):
+        should_hide = True
+
+    if should_hide:
+        # Return empty content (to remove the card) + OOB filter buttons update
+        return Response(content=filter_buttons_html, status_code=200, media_type="text/html")
+
+    # Otherwise return the updated card/row + OOB filter buttons
+    if target.startswith("device-row-"):
+        template_name = "partials/device_row.html"
+    else:
+        template_name = "partials/device_card.html"
+
+    # Render the device card/row
+    card_html = templates.get_template(template_name).render(
+        request=request,
+        device=device,
+    )
+
+    # Combine card + OOB filter buttons
+    return Response(
+        content=card_html + filter_buttons_html, status_code=200, media_type="text/html"
     )
 
 
@@ -481,7 +685,9 @@ async def devices_page(
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-    filter: str = Query(default="all", pattern="^(all|paired|connected|favorites)$"),
+    filter: str = Query(
+        default="all", pattern="^(all|paired|connected|favorites|ignored|history)$"
+    ),
     sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
 ) -> object:
     """Serve the devices list page."""
@@ -491,44 +697,99 @@ async def devices_page(
     except BluetoothError:
         live_states = {}
 
-    # Get stored devices
-    store_filter = "favorites" if filter == "favorites" else "all"
-    stored_devices = await store.get_all_devices(filter_type=store_filter, sort_by=sort)
+    # Get stored devices - exclude ignored unless specifically filtering for them
+    store_filter = filter if filter in ("favorites", "ignored") else "all"
+    include_ignored = filter == "ignored"  # Only show ignored devices on the Ignored filter
+    stored_devices = await store.get_all_devices(
+        filter_type=store_filter, sort_by=sort, include_ignored=include_ignored
+    )
+
+    # Also get ALL devices (including ignored) to calculate accurate counts for filter buttons
+    all_devices_for_counts = await store.get_all_devices(
+        filter_type="all", sort_by="last_seen", include_ignored=True
+    )
 
     # Upsert any BlueZ-known devices not yet in the store
     stored_macs = {d["mac_address"] for d in stored_devices}
+    all_macs_for_counts = {d["mac_address"] for d in all_devices_for_counts}
+    # Also track which devices are ignored (for filtering)
+    ignored_macs = {d["mac_address"] for d in all_devices_for_counts if d.get("is_ignored")}
+
     for mac, live_data in live_states.items():
-        if mac not in stored_macs:
+        new_record = None
+        if mac not in all_macs_for_counts:
+            # New device discovered by BlueZ - upsert to store
             new_record = await store.upsert_device(
                 mac,
                 name=live_data.get("name"),
                 device_type=live_data.get("device_type"),
             )
+            all_devices_for_counts.append(new_record)
+
+        # Add to stored_devices only if:
+        # 1. Not already in stored_devices
+        # 2. Not filtering for ignored devices
+        # 3. Device is NOT ignored (don't show ignored devices on "all" filter)
+        if mac not in stored_macs and filter != "ignored" and mac not in ignored_macs:
+            if new_record is None:
+                new_record = await store.upsert_device(
+                    mac,
+                    name=live_data.get("name"),
+                    device_type=live_data.get("device_type"),
+                )
             stored_devices.append(new_record)
 
-    # Build merged runtime states and count stats
-    devices: list[DeviceRuntimeState] = []
+    # Calculate counts from ALL devices (including ignored) for filter button accuracy
     paired_count = 0
     connected_count = 0
     favorite_count = 0
+    ignored_count = 0
+    in_range_count = 0
+    history_count = 0
 
+    for stored in all_devices_for_counts:
+        mac = str(stored["mac_address"])
+        live = live_states.get(mac)
+        runtime = _build_runtime_state(stored, live)
+
+        # Count ignored devices separately
+        if runtime.is_ignored:
+            ignored_count += 1
+            continue
+
+        # Count favorites/paired/connected across ALL devices (not just in-range)
+        if runtime.is_favorite:
+            favorite_count += 1
+        if runtime.paired:
+            paired_count += 1
+        if runtime.connected:
+            connected_count += 1
+
+        # Count in-range vs history (non-ignored only)
+        if runtime.in_range:
+            in_range_count += 1
+        else:
+            history_count += 1
+
+    # Build runtime states for display (from filtered stored_devices)
+    devices: list[DeviceRuntimeState] = []
     for stored in stored_devices:
         mac = str(stored["mac_address"])
         live = live_states.get(mac)
         runtime = _build_runtime_state(stored, live)
 
-        # Count stats (from all devices, before filtering)
-        if runtime.paired:
-            paired_count += 1
-        if runtime.connected:
-            connected_count += 1
-        if runtime.is_favorite:
-            favorite_count += 1
-
         # Apply filter for paired/connected
         if filter == "paired" and not runtime.paired:
             continue
         if filter == "connected" and not runtime.connected:
+            continue
+
+        # "all" filter: only show in-range devices (excludes history)
+        if filter == "all" and not runtime.in_range:
+            continue
+
+        # "history" filter: only show out-of-range devices
+        if filter == "history" and runtime.in_range:
             continue
 
         devices.append(runtime)
@@ -538,10 +799,12 @@ async def devices_page(
         {
             "request": request,
             "devices": devices,
-            "device_count": len(stored_devices),
+            "device_count": in_range_count,
             "paired_count": paired_count,
             "connected_count": connected_count,
             "favorite_count": favorite_count,
+            "ignored_count": ignored_count,
+            "history_count": history_count,
             "current_filter": filter,
             "current_sort": sort,
             "is_scanning": bt.is_scanning,

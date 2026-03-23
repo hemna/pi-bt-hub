@@ -59,8 +59,8 @@
       <button class="btn btn--secondary"
               hx-post="/api/adapter/power"
               hx-vals='{"powered": false}'
-              hx-target="body"
-              hx-swap="outerHTML"
+              hx-swap="none"
+              hx-on::after-request="window.location.reload()"
               hx-indicator=".power-indicator">
         Power Off
         <span class="spinner spinner--sm htmx-indicator power-indicator"></span>
@@ -69,8 +69,8 @@
       <button class="btn btn--primary"
               hx-post="/api/adapter/power"
               hx-vals='{"powered": true}'
-              hx-target="body"
-              hx-swap="outerHTML"
+              hx-swap="none"
+              hx-on::after-request="window.location.reload()"
               hx-indicator=".power-indicator">
         Power On
         <span class="spinner spinner--sm htmx-indicator power-indicator"></span>
@@ -98,6 +98,10 @@
     <div class="flex items-center gap-2">
       {% if bridge_status %}
         <span class="badge badge--on">Online</span>
+      {% elif service_status and service_status.state == 'active' %}
+        <span class="badge badge--pairing">Starting</span>
+      {% elif service_status and service_status.state == 'not-found' %}
+        <span class="badge badge--off">Not Installed</span>
       {% else %}
         <span class="badge badge--off">Offline</span>
       {% endif %}
@@ -105,7 +109,11 @@
   </div>
   <div class="card__body">
     {% if bridge_status %}
+    {# Bridge daemon is online - show bridge status #}
     <div class="info-grid mb-4">
+      <dt>Service</dt>
+      <dd><span class="badge badge--on">Running</span></dd>
+
       <dt>BLE</dt>
       <dd>
         {% set ble_state = bridge_status.ble.state %}
@@ -150,15 +158,98 @@
     <div class="action-group">
       <a href="/bridge" class="btn btn--primary">Bridge Details</a>
       <a href="/bridge/tnc" class="btn btn--secondary">TNC Devices</a>
+      <button class="btn btn--secondary"
+              hx-post="/api/bridge/service/stop"
+              hx-target="#bridge-service-controls"
+              hx-swap="innerHTML"
+              hx-indicator=".service-indicator"
+              hx-confirm="Stop the bridge service?">
+        Stop
+        <span class="spinner spinner--sm htmx-indicator service-indicator"></span>
+      </button>
+      <button class="btn btn--secondary"
+              hx-post="/api/bridge/service/restart"
+              hx-swap="none"
+              hx-on::after-request="window.location.reload()"
+              hx-indicator=".service-indicator">
+        Restart
+        <span class="spinner spinner--sm htmx-indicator service-indicator"></span>
+      </button>
+    </div>
+
+    {% elif service_status %}
+    {# Service status available but daemon not responding #}
+    <div id="bridge-service-controls">
+      {% include "partials/bridge_service_status.html" %}
     </div>
 
     {% else %}
+    {# No service status available #}
     <div class="empty-state">
       <div class="empty-state__icon">&#128279;</div>
       <div class="empty-state__title">Bridge Offline</div>
       <p class="empty-state__text">The bridge daemon is not responding. Check that bt-bridge.service is running.</p>
     </div>
     {% endif %}
+
+    {# Logs section (hidden by default) #}
+    <div id="bridge-logs" style="display: none; margin-top: 1rem;">
+      <div class="card__header" style="padding: 0.5rem 0;">
+        <h3 style="font-size: 0.9rem; margin: 0;">Service Logs</h3>
+        <button class="btn btn--sm btn--secondary" onclick="document.getElementById('bridge-logs').style.display='none'">
+          Close
+        </button>
+      </div>
+      <pre id="bridge-logs-content" style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 4px; font-size: 0.75rem; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">
+        Click "View Logs" to load logs...
+      </pre>
+    </div>
+
+    {# Install modal (hidden by default) #}
+    <div id="bridge-install-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+      <div style="background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0;">Installing bt-bridge</h3>
+          <button class="btn btn--sm btn--secondary" onclick="closeBridgeInstallModal()">Close</button>
+        </div>
+        <div id="bridge-install-status" style="margin-bottom: 1rem;">
+          <div class="flex items-center gap-2">
+            <span class="spinner spinner--sm"></span>
+            <span>Installing... This may take a few minutes.</span>
+          </div>
+        </div>
+        <pre id="bridge-install-output" style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 4px; font-size: 0.75rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-family: monospace;">
+Cloning bt-bridge repository...
+        </pre>
+      </div>
+    </div>
+
+    <script>
+      function showBridgeInstallModal() {
+        document.getElementById('bridge-install-modal').style.display = 'flex';
+        document.getElementById('bridge-install-status').innerHTML = '<div class="flex items-center gap-2"><span class="spinner spinner--sm"></span><span>Installing... This may take a few minutes.</span></div>';
+        document.getElementById('bridge-install-output').textContent = 'Cloning bt-bridge repository...';
+      }
+      
+      function closeBridgeInstallModal() {
+        document.getElementById('bridge-install-modal').style.display = 'none';
+      }
+      
+      function updateBridgeInstallResult(result) {
+        var statusEl = document.getElementById('bridge-install-status');
+        var outputEl = document.getElementById('bridge-install-output');
+        
+        if (result.success) {
+          statusEl.innerHTML = '<div class="alert alert--success">bt-bridge installed successfully!</div>';
+        } else {
+          statusEl.innerHTML = '<div class="alert alert--error">' + result.message + '</div>';
+        }
+        
+        if (result.output) {
+          outputEl.textContent = result.output;
+        }
+      }
+    </script>
   </div>
 </div>
 {% endif %}

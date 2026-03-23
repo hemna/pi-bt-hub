@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen TEXT NOT NULL,
     last_connected TEXT,
     is_favorite INTEGER NOT NULL DEFAULT 0,
+    is_ignored INTEGER NOT NULL DEFAULT 0,
     notes TEXT
 )
 """
@@ -42,6 +43,10 @@ _CREATE_INDEXES = [
     (
         "CREATE INDEX IF NOT EXISTS idx_devices_is_favorite "
         "ON devices(is_favorite) WHERE is_favorite = 1"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_devices_is_ignored "
+        "ON devices(is_ignored) WHERE is_ignored = 1"
     ),
 ]
 
@@ -66,11 +71,27 @@ class DeviceStore:
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute(_CREATE_DEVICES_TABLE)
         await self._db.execute(_CREATE_SETTINGS_TABLE)
+        await self._db.execute(_INSERT_DEFAULT_SETTINGS)
+        # Run migrations BEFORE creating indexes (indexes may depend on new columns)
+        await self._run_migrations()
+        # Create indexes after migrations
         for idx_sql in _CREATE_INDEXES:
             await self._db.execute(idx_sql)
-        await self._db.execute(_INSERT_DEFAULT_SETTINGS)
         await self._db.commit()
         logger.info("Database initialized at %s", self._db_path)
+
+    async def _run_migrations(self) -> None:
+        """Run database migrations for schema changes."""
+        # Get existing columns in devices table
+        async with self.db.execute("PRAGMA table_info(devices)") as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+
+        # Migration: Add is_ignored column if it doesn't exist
+        if "is_ignored" not in columns:
+            logger.info("Migrating database: adding is_ignored column")
+            await self.db.execute(
+                "ALTER TABLE devices ADD COLUMN is_ignored INTEGER NOT NULL DEFAULT 0"
+            )
 
     async def close(self) -> None:
         """Close the database connection."""
@@ -93,13 +114,26 @@ class DeviceStore:
         *,
         filter_type: str = "all",
         sort_by: str = "last_seen",
+        include_ignored: bool = True,
     ) -> list[dict[str, object]]:
-        """Return all stored devices, optionally filtered and sorted."""
+        """Return all stored devices, optionally filtered and sorted.
+
+        Args:
+            filter_type: Filter devices by type (all, favorites, ignored)
+            sort_by: Sort order (last_seen, name, last_connected)
+            include_ignored: If False, exclude ignored devices from results
+        """
         query = "SELECT * FROM devices"
         conditions: list[str] = []
 
         if filter_type == "favorites":
             conditions.append("is_favorite = 1")
+        elif filter_type == "ignored":
+            conditions.append("is_ignored = 1")
+
+        # Exclude ignored devices unless specifically requesting them
+        if not include_ignored and filter_type != "ignored":
+            conditions.append("is_ignored = 0")
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
@@ -160,6 +194,7 @@ class DeviceStore:
         *,
         alias: str | None = None,
         is_favorite: bool | None = None,
+        is_ignored: bool | None = None,
         notes: str | None = None,
         last_connected: str | None = None,
     ) -> dict[str, object] | None:
@@ -177,6 +212,9 @@ class DeviceStore:
         if is_favorite is not None:
             updates.append("is_favorite = ?")
             params.append(int(is_favorite))
+        if is_ignored is not None:
+            updates.append("is_ignored = ?")
+            params.append(int(is_ignored))
         if notes is not None:
             updates.append("notes = ?")
             params.append(notes)

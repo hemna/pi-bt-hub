@@ -22,9 +22,16 @@
       <div class="device-card__meta">
         {% include "partials/status_badge.html" %}
         {% if device.rssi is not none %}
-        <span class="badge" style="font-size: 0.75rem;" title="{{ device.rssi }} dBm">
-          {% if device.rssi >= -50 %}&#9602;&#9604;&#9606;&#9608;{% elif device.rssi >= -70 %}&#9602;&#9604;&#9606;{% elif device.rssi >= -85 %}&#9602;&#9604;{% else %}&#9602;{% endif %}
-          {{ device.rssi }} dBm
+        {% set strength = 'excellent' if device.rssi >= -50 else ('good' if device.rssi >= -70 else ('fair' if device.rssi >= -85 else 'weak')) %}
+        {% set bars = 4 if device.rssi >= -50 else (3 if device.rssi >= -70 else (2 if device.rssi >= -85 else 1)) %}
+        <span class="signal-badge" data-tooltip="{{ device.rssi }} dBm">
+          <span class="signal-meter signal-meter--{{ strength }}">
+            <span class="signal-meter__bar {% if bars >= 1 %}signal-meter__bar--active{% endif %}"></span>
+            <span class="signal-meter__bar {% if bars >= 2 %}signal-meter__bar--active{% endif %}"></span>
+            <span class="signal-meter__bar {% if bars >= 3 %}signal-meter__bar--active{% endif %}"></span>
+            <span class="signal-meter__bar {% if bars >= 4 %}signal-meter__bar--active{% endif %}"></span>
+          </span>
+          {{ device.rssi }}dBm
         </span>
         {% endif %}
       </div>
@@ -36,8 +43,16 @@
               hx-vals='{"is_favorite": "{{ "false" if device.is_favorite else "true" }}"}'
               hx-target="#device-{{ device.mac_address | replace(':', '-') }}"
               hx-swap="outerHTML"
-              title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
+              data-tooltip="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
         {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
+      </button>
+      <button class="ignore-btn {% if device.is_ignored %}ignore-btn--active{% endif %}"
+              hx-post="/api/devices/{{ device.mac_address }}/ignore"
+              hx-vals='{"is_ignored": "{{ "false" if device.is_ignored else "true" }}"}'
+              hx-target="#device-{{ device.mac_address | replace(':', '-') }}"
+              hx-swap="outerHTML"
+              data-tooltip="{{ 'Stop ignoring' if device.is_ignored else 'Ignore this device' }}">
+        {% if device.is_ignored %}&#128065;{% else %}&#128064;{% endif %}
       </button>
     </div>
   </div>

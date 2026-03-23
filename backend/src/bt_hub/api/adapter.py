@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
 from bt_hub.api import AdapterUnavailableError
 from bt_hub.config import get_settings
-from bt_hub.deps import get_bt_bridge_client, get_device_store, get_templates
+from bt_hub.deps import get_bridge_service, get_bt_bridge_client, get_device_store, get_templates
 from bt_hub.models.device import (
     AdapterState,
     PowerRequest,
@@ -19,6 +19,7 @@ from bt_hub.models.device import (
 from bt_hub.services.bluetooth import BlueZManager  # noqa: TC001
 from bt_hub.services.bt_bridge_client import BtBridgeClient  # noqa: TC001
 from bt_hub.services.device_store import DeviceStore  # noqa: TC001
+from bt_hub.services.systemd_service import SystemdService  # noqa: TC001
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,34 @@ async def get_adapter(
 
 @router.post("/api/adapter/power", response_model=AdapterState)
 async def set_adapter_power(
-    body: PowerRequest,
+    request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-) -> AdapterState:
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+    powered: Annotated[bool | None, Form()] = None,
+) -> object:
     """Toggle adapter power on or off."""
-    logger.info("Setting adapter power to %s", body.powered)
-    return await bt.set_powered(body.powered)
+    # Handle form data from HTMX (hx-vals sends form-encoded data)
+    power_value: bool = False
+    if powered is not None:
+        power_value = powered
+    else:
+        # Try to get from JSON body for API clients
+        try:
+            body = await request.json()
+            power_value = bool(body.get("powered", False))
+        except Exception:
+            power_value = False
+
+    logger.info("Setting adapter power to %s", power_value)
+    state = await bt.set_powered(power_value)
+
+    # Return HTML partial for HTMX, or JSON for API clients
+    if "hx-request" in request.headers:
+        return templates.TemplateResponse(
+            "partials/adapter_status.html",
+            {"request": request, "adapter": state},
+        )
+    return state
 
 
 @router.post("/api/scan/start")
@@ -136,12 +159,20 @@ async def index_page(
 
     # Probe BT Bridge if enabled (graceful fallback)
     bridge_status = None
+    service_status = None
     settings = get_settings()
     if settings.bridge_enabled:
         bridge_status = await bridge_client.get_status()
+        # Get systemd service status
+        try:
+            bridge_service = get_bridge_service()
+            service_status = await bridge_service.status()
+        except Exception:
+            pass  # Service not available
 
-    # Get device counts
-    devices = await store.get_all_devices()
+    # Get device counts (exclude ignored from main count)
+    all_devices = await store.get_all_devices(include_ignored=True)
+    devices = [d for d in all_devices if not d.get("is_ignored", False)]
 
     # Get live states to count paired/connected
     try:
@@ -152,10 +183,14 @@ async def index_page(
     paired_count = 0
     connected_count = 0
     favorite_count = 0
+    ignored_count = 0
 
-    for d in devices:
+    for d in all_devices:
         mac = str(d["mac_address"])
         live = live_states.get(mac, {})
+        if d.get("is_ignored", False):
+            ignored_count += 1
+            continue  # Don't count ignored devices in other stats
         if live.get("paired", False):
             paired_count += 1
         if live.get("connected", False):
@@ -172,7 +207,9 @@ async def index_page(
             "paired_count": paired_count,
             "connected_count": connected_count,
             "favorite_count": favorite_count,
+            "ignored_count": ignored_count,
             "bridge_status": bridge_status,
             "bridge_enabled": settings.bridge_enabled,
+            "service_status": service_status,
         },
     )

@@ -65,6 +65,7 @@ class Device(BaseModel):
     last_seen: datetime
     last_connected: datetime | None = None
     is_favorite: bool = False
+    is_ignored: bool = False
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("mac_address")
@@ -91,6 +92,7 @@ class DeviceUpdate(BaseModel):
 
     alias: str | None = Field(default=None, min_length=1, max_length=64)
     is_favorite: bool | None = None
+    is_ignored: bool | None = None
     notes: str | None = Field(default=None, max_length=500)
 
 

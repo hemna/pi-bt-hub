@@ -6,6 +6,6 @@
         hx-target="#detail-favorite-{{ device.mac_address | replace(':', '-') }}"
         hx-swap="outerHTML"
         id="detail-favorite-{{ device.mac_address | replace(':', '-') }}"
-        title="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
+        data-tooltip="{{ 'Remove from favorites' if device.is_favorite else 'Add to favorites' }}">
   {% if device.is_favorite %}&#9733;{% else %}&#9734;{% endif %}
 </button>

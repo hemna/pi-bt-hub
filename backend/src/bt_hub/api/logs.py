@@ -41,7 +41,7 @@ async def logs_stream() -> StreamingResponse:
     handler = get_sse_log_handler()
     if handler is None:
         return StreamingResponse(
-            iter(["data: {\"error\": \"Log streaming not configured\"}\n\n"]),
+            iter(['data: {"error": "Log streaming not configured"}\n\n']),
             media_type="text/event-stream",
         )
 

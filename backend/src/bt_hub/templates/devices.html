@@ -9,19 +9,10 @@
 </div>
 
 <!-- Scan Controls -->
-<div class="card mb-4" x-data="{ scanning: {{ 'true' if is_scanning else 'false' }} }"
-     @bt-ws-message.window="
-       if ($event.detail.type === 'scan_stopped') {
-         scanning = false;
-         // Refresh the page to show updated device list
-         window.location.reload();
-       } else if ($event.detail.type === 'scan_started') {
-         scanning = true;
-       }
-     ">
+<div class="card mb-4" x-data x-init="$store.scan.active = {{ 'true' if is_scanning else 'false' }}">
   <div class="card__header">
     <h2>Scan for Devices</h2>
-    <span class="badge badge--pairing" x-show="scanning">Scanning...</span>
+    <span class="badge badge--pairing" x-show="$store.scan.active">Scanning...</span>
   </div>
   <div class="card__body">
     <p style="margin-bottom: 1rem; color: var(--text-secondary);">
@@ -30,21 +21,21 @@
     
     <div class="action-group">
       <button class="btn btn--primary"
-              x-show="!scanning"
+              x-show="!$store.scan.active"
               hx-post="/api/scan/start"
               hx-target="#device-list"
               hx-swap="innerHTML"
               hx-indicator=".scan-indicator"
-              @click="scanning = true">
+              @click="$store.scan.start()">
         Start Scan
         <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
       </button>
       <button class="btn btn--danger"
-              x-show="scanning"
+              x-show="$store.scan.active"
               hx-post="/api/scan/stop"
               hx-target="#scan-status"
               hx-indicator=".scan-indicator"
-              @click="scanning = false">
+              @click="$store.scan.stop()">
         Stop Scan
         <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
       </button>
@@ -68,7 +59,7 @@
 
   <!-- Filter & Sort Bar -->
   <div class="filter-bar">
-  <div class="filter-bar__group">
+  <div class="filter-bar__group" id="device-filter-buttons">
     <button class="filter-bar__btn {% if current_filter == 'all' %}filter-bar__btn--active{% endif %}"
             hx-get="/devices?filter=all"
             hx-target="body"
@@ -92,6 +83,18 @@
             hx-target="body"
             hx-push-url="true">
       Favorites ({{ favorite_count | default(0) }})
+    </button>
+    <button class="filter-bar__btn {% if current_filter == 'history' %}filter-bar__btn--active{% endif %}"
+            hx-get="/devices?filter=history"
+            hx-target="body"
+            hx-push-url="true">
+      History ({{ history_count | default(0) }})
+    </button>
+    <button class="filter-bar__btn {% if current_filter == 'ignored' %}filter-bar__btn--active{% endif %}"
+            hx-get="/devices?filter=ignored"
+            hx-target="body"
+            hx-push-url="true">
+      Ignored ({{ ignored_count | default(0) }})
     </button>
   </div>
 

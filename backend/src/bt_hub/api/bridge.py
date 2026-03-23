@@ -10,11 +10,12 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from bt_hub.deps import get_bridge_proxy, get_templates
+from bt_hub.deps import get_bridge_proxy, get_bridge_service, get_templates
 from bt_hub.services.bridge_proxy import BridgeProxy
+from bt_hub.services.systemd_service import SystemdService
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,109 @@ async def bridge_restart(
     return _proxy_response(await proxy.restart())
 
 
+# --- Systemd Service Control ---
+
+
+@router.get("/api/bridge/service/status")
+async def bridge_service_status(
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+) -> JSONResponse:
+    """Get the systemd service status for bt-bridge."""
+    status = await service.status()
+    return JSONResponse(status.model_dump())
+
+
+@router.post("/api/bridge/service/start")
+async def bridge_service_start(
+    request: Request,
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+) -> JSONResponse:
+    """Start the bt-bridge systemd service."""
+    result = await service.start()
+    # For HTMX requests, return the updated bridge card partial
+    if "hx-request" in request.headers:
+        # Get fresh status after action
+        status = await service.status()
+        return templates.TemplateResponse(
+            "partials/bridge_service_status.html",
+            {"request": request, "service_status": status, "result": result},
+        )
+    return JSONResponse(result.model_dump())
+
+
+@router.post("/api/bridge/service/stop")
+async def bridge_service_stop(
+    request: Request,
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+) -> JSONResponse:
+    """Stop the bt-bridge systemd service."""
+    result = await service.stop()
+    if "hx-request" in request.headers:
+        status = await service.status()
+        return templates.TemplateResponse(
+            "partials/bridge_service_status.html",
+            {"request": request, "service_status": status, "result": result},
+        )
+    return JSONResponse(result.model_dump())
+
+
+@router.post("/api/bridge/service/restart")
+async def bridge_service_restart(
+    request: Request,
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+) -> JSONResponse:
+    """Restart the bt-bridge systemd service."""
+    result = await service.restart()
+    if "hx-request" in request.headers:
+        status = await service.status()
+        return templates.TemplateResponse(
+            "partials/bridge_service_status.html",
+            {"request": request, "service_status": status, "result": result},
+        )
+    return JSONResponse(result.model_dump())
+
+
+@router.get("/api/bridge/service/logs", response_model=None)
+async def bridge_service_logs(
+    request: Request,
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+    lines: int = 100,
+) -> JSONResponse | PlainTextResponse:
+    """Get recent journalctl logs for bt-bridge service."""
+    logs = await service.logs(lines=lines)
+    # For HTMX requests, return plain text that goes directly into the pre element
+    if "hx-request" in request.headers:
+        return PlainTextResponse(logs)
+    return JSONResponse({"logs": logs})
+
+
+@router.post("/api/bridge/service/install", response_model=None)
+async def bridge_service_install(
+    request: Request,
+    service: Annotated[SystemdService, Depends(get_bridge_service)],
+    templates: Annotated[Jinja2Templates, Depends(get_templates)],
+) -> JSONResponse | HTMLResponse:
+    """Install bt-bridge from GitHub."""
+    result = await service.install_bt_bridge()
+    if "hx-request" in request.headers:
+        # Return HTML with result for the modal
+        status_class = "alert--success" if result.success else "alert--error"
+        html = f"""<div id="install-result-banner" class="alert {status_class}" style="margin-bottom: 1rem;">
+            {result.message}
+            {"<br><small>Page will reload in 2 seconds...</small>" if result.success else ""}
+        </div>
+        <pre style="white-space: pre-wrap; word-wrap: break-word;">{result.output}</pre>
+        <script>
+            document.getElementById('bridge-install-status').innerHTML = document.getElementById('install-result-banner').outerHTML;
+            document.getElementById('install-result-banner').remove();
+        </script>"""
+        return HTMLResponse(html)
+    return JSONResponse(result.model_dump())
+
+
 # --- TNC History ---
 
 
@@ -177,11 +281,14 @@ async def bridge_page(
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
 ) -> object:
     status = await proxy.get_status()
-    return templates.TemplateResponse("bridge/status.html", {
-        "request": request,
-        "status": status,
-        "offline": status is None,
-    })
+    return templates.TemplateResponse(
+        "bridge/status.html",
+        {
+            "request": request,
+            "status": status,
+            "offline": status is None,
+        },
+    )
 
 
 @router.get("/bridge/stats")
@@ -192,12 +299,15 @@ async def bridge_stats_page(
 ) -> object:
     stats = await proxy.get_stats()
     status = await proxy.get_status()
-    return templates.TemplateResponse("bridge/stats.html", {
-        "request": request,
-        "stats": stats,
-        "status": status,
-        "offline": status is None,
-    })
+    return templates.TemplateResponse(
+        "bridge/stats.html",
+        {
+            "request": request,
+            "stats": stats,
+            "status": status,
+            "offline": status is None,
+        },
+    )
 
 
 @router.get("/bridge/tnc")
@@ -206,6 +316,9 @@ async def bridge_tnc_page(
     proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
 ) -> object:
-    return templates.TemplateResponse("bridge/tnc.html", {
-        "request": request,
-    })
+    return templates.TemplateResponse(
+        "bridge/tnc.html",
+        {
+            "request": request,
+        },
+    )
