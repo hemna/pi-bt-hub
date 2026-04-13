@@ -1,26 +1,29 @@
 [Unit]
-Description=Pi BT Hub - Unified Bluetooth Management Web UI
+Description=Pi BT Hub - Bluetooth Management Web UI
 Documentation=https://github.com/hemna/pi-bt-hub
 After=bluetooth.target dbus.service network.target
 Requires=bluetooth.target dbus.service
 
 [Service]
 Type=simple
-# Update paths to match your installation
+
+# Update paths to match your installation (replace /home/pi with your home directory)
+WorkingDirectory=/home/pi/pi-bt-hub
 ExecStart=/home/pi/pi-bt-hub/.venv/bin/uvicorn bt_hub.main:app --host 0.0.0.0 --port 8080
-WorkingDirectory=/home/pi/pi-bt-hub/backend
+
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
 # Run as pi user with bluetooth group access
+# For port 80, change to User=root and Group=root
 User=pi
 Group=pi
 SupplementaryGroups=bluetooth
 
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/pi/pi-bt-hub/backend/src
+Environment=PYTHONPATH=/home/pi/pi-bt-hub/src
 Environment=BT_HUB_DB_PATH=/home/pi/pi-bt-hub/data/bt_hub.db
 Environment=BT_HUB_LOG_LEVEL=INFO
 

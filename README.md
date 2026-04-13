@@ -8,6 +8,8 @@ A web-based Bluetooth management interface for Raspberry Pi, with optional integ
 
 - **Device Management**: Scan, discover, and manage Bluetooth devices
 - **Favorites**: Mark devices as favorites for quick access
+- **Ignore List**: Hide unwanted devices from scan results
+- **Signal Strength**: Real-time RSSI signal meter with color-coded bars
 - **Bridge Integration**: Optional integration with bt-bridge daemon for BLE-to-Classic bridging
 - **TCP KISS Server**: Configurable TCP KISS server port to avoid conflicts with direwolf
 - **Real-time Updates**: WebSocket-based live updates during scanning
@@ -153,21 +155,49 @@ Configuration is done via environment variables. Set these in the systemd servic
 
 ### Systemd Service Configuration
 
+The default service file runs on port 8080 as a regular user. To run on port 80 (standard HTTP), you need to either run as root or grant the capability to bind to privileged ports.
+
+**Option 1: Run as root on port 80**
+
 Edit `/etc/systemd/system/bt-hub.service`:
 
 ```ini
 [Unit]
-Description=Pi BT Hub - Unified Bluetooth Management Web UI
-After=network.target bluetooth.target
-Wants=bt-bridge.service
+Description=Pi BT Hub - Bluetooth Management Web UI
+After=network.target bluetooth.target dbus.service
+Requires=bluetooth.target dbus.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/pi/pi-bt-hub
+Environment=PYTHONPATH=/home/pi/pi-bt-hub/src
+Environment=BT_HUB_DB_PATH=/home/pi/pi-bt-hub/data/bt_hub.db
+ExecStart=/home/pi/pi-bt-hub/.venv/bin/uvicorn bt_hub.main:app --host 0.0.0.0 --port 80
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Option 2: Run as regular user on port 8080**
+
+```ini
+[Unit]
+Description=Pi BT Hub - Bluetooth Management Web UI
+After=network.target bluetooth.target dbus.service
+Requires=bluetooth.target dbus.service
 
 [Service]
 Type=simple
 User=pi
 Group=pi
+SupplementaryGroups=bluetooth
 WorkingDirectory=/home/pi/pi-bt-hub
-Environment=BT_HUB_BRIDGE_ENABLED=true
-Environment=BT_HUB_BRIDGE_URL=http://localhost:8081
+Environment=PYTHONPATH=/home/pi/pi-bt-hub/src
+Environment=BT_HUB_DB_PATH=/home/pi/pi-bt-hub/data/bt_hub.db
 ExecStart=/home/pi/pi-bt-hub/.venv/bin/uvicorn bt_hub.main:app --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=5
@@ -175,6 +205,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+> **Note**: Replace `/home/pi` with your actual home directory (e.g., `/home/waboring`).
 
 ## Bridge Integration
 
@@ -316,12 +348,12 @@ The bridge will automatically restart with the new port.
 
 ## Web Interface
 
-Access the web interface at `http://<pi-address>:8080`
+Access the web interface at `http://<pi-address>:8080` (or port 80 if configured)
 
 ### Pages
 
 - **Dashboard** (`/`): Overview with quick actions and bridge status
-- **Devices** (`/devices`): List all discovered Bluetooth devices
+- **Devices** (`/devices`): Scan, pair, and manage Bluetooth devices with favorites, ignore list, and signal strength display
 - **Bridge** (`/bridge`): Bridge status and TNC connection management (when enabled)
 - **TNC Devices** (`/bridge/tnc`): Manage TNC device history (when enabled)
 - **Settings** (`/settings`): Configure app and bridge settings
