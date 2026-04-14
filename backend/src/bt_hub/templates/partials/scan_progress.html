@@ -62,6 +62,8 @@
             if (this.scanning) {
               this.scanning = false;
               clearInterval(this._timer);
+              // Update the global store so the button updates
+              if (Alpine.store('scan')) Alpine.store('scan').stop();
               // Don't reload - keep showing scan results
             }
           }, {{ (duration | default(10)) * 1000 + 3000 }});
