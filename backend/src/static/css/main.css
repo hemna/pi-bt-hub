@@ -983,8 +983,11 @@ img {
    Instant Tooltips (no delay)
    ========================================= */
 
-.favorite-btn[data-tooltip]::after,
-.ignore-btn[data-tooltip]::after {
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: 100%;
@@ -1001,10 +1004,10 @@ img {
   transition: opacity 0.1s;
   z-index: 100;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  margin-bottom: 4px;
 }
 
-.favorite-btn[data-tooltip]:hover::after,
-.ignore-btn[data-tooltip]:hover::after {
+[data-tooltip]:hover::after {
   opacity: 1;
 }
 
