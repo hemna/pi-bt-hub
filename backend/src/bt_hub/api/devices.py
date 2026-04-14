@@ -16,7 +16,7 @@ from bt_hub.api import (
     InvalidMacAddressError,
 )
 from bt_hub.api.adapter import get_bluetooth_manager
-from bt_hub.deps import get_device_store, get_templates, get_templates_optional
+from bt_hub.deps import get_device_store, get_templates, get_templates_optional, render_template
 from bt_hub.models.device import (
     ConnectionState,
     DeviceActionResponse,
@@ -247,10 +247,7 @@ async def toggle_favorite(
 
     # If on detail page, just return the button
     if target.startswith("detail-favorite-"):
-        return templates.TemplateResponse(
-            "partials/favorite_button_detail.html",
-            {"request": request, "device": device},
-        )
+        return render_template("partials/favorite_button_detail.html", request, device=device)
 
     # Check current filter to determine if device should be hidden
     current_url = request.headers.get("hx-current-url", "")
@@ -287,10 +284,7 @@ async def toggle_favorite(
     else:
         template_name = "partials/device_card.html"
 
-    return templates.TemplateResponse(
-        template_name,
-        {"request": request, "device": device},
-    )
+    return render_template(template_name, request, device=device)
 
 
 @router.post("/api/devices/{mac_address}/ignore")
@@ -345,10 +339,7 @@ async def toggle_ignored(
 
     # If on detail page (targeting the button itself), just update the button
     if target.startswith("detail-ignored-"):
-        return templates.TemplateResponse(
-            "partials/ignored_button_detail.html",
-            {"request": request, "device": device},
-        )
+        return render_template("partials/ignored_button_detail.html", request, device=device)
 
     # Calculate updated counts for filter buttons (only if on devices page)
     filter_buttons_html = ""
@@ -479,10 +470,7 @@ def _htmx_device_response(
     else:
         template_name = "partials/device_card.html"
 
-    return templates.TemplateResponse(
-        template_name,
-        {"request": request, "device": device},
-    )
+    return render_template(template_name, request, device=device)
 
 
 @router.delete("/api/devices/{mac_address}")
@@ -794,21 +782,19 @@ async def devices_page(
 
         devices.append(runtime)
 
-    return templates.TemplateResponse(
+    return render_template(
         "devices.html",
-        {
-            "request": request,
-            "devices": devices,
-            "device_count": in_range_count,
-            "paired_count": paired_count,
-            "connected_count": connected_count,
-            "favorite_count": favorite_count,
-            "ignored_count": ignored_count,
-            "history_count": history_count,
-            "current_filter": filter,
-            "current_sort": sort,
-            "is_scanning": bt.is_scanning,
-        },
+        request,
+        devices=devices,
+        device_count=in_range_count,
+        paired_count=paired_count,
+        connected_count=connected_count,
+        favorite_count=favorite_count,
+        ignored_count=ignored_count,
+        history_count=history_count,
+        current_filter=filter,
+        current_sort=sort,
+        is_scanning=bt.is_scanning,
     )
 
 
@@ -833,10 +819,4 @@ async def device_detail_page(
 
     device = _build_runtime_state(stored, live)
 
-    return templates.TemplateResponse(
-        "device.html",
-        {
-            "request": request,
-            "device": device,
-        },
-    )
+    return render_template("device.html", request, device=device)

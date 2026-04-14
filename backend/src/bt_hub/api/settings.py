@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
-from bt_hub.deps import get_device_store, get_templates
+from bt_hub.deps import get_device_store, get_templates, render_template
 from bt_hub.models.settings import AppSettings, AppSettingsUpdate
 from bt_hub.services.device_store import DeviceStore  # noqa: TC001
 
@@ -63,10 +63,4 @@ async def settings_page(
     """Serve the settings page."""
     row = await store.get_settings()
     settings = AppSettings.model_validate(row)
-    return templates.TemplateResponse(
-        "settings.html",
-        {
-            "request": request,
-            "settings": settings,
-        },
-    )
+    return render_template("settings.html", request, settings=settings)

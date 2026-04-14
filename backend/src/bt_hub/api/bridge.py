@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from bt_hub.deps import get_bridge_proxy, get_bridge_service, get_templates
+from bt_hub.deps import get_bridge_proxy, get_bridge_service, get_templates, render_template
 from bt_hub.services.bridge_proxy import BridgeProxy
 from bt_hub.services.systemd_service import SystemdService
 
@@ -131,9 +131,11 @@ async def bridge_service_start(
     if "hx-request" in request.headers:
         # Get fresh status after action
         status = await service.status()
-        return templates.TemplateResponse(
+        return render_template(
             "partials/bridge_service_status.html",
-            {"request": request, "service_status": status, "result": result},
+            request,
+            service_status=status,
+            result=result,
         )
     return JSONResponse(result.model_dump())
 
@@ -148,9 +150,11 @@ async def bridge_service_stop(
     result = await service.stop()
     if "hx-request" in request.headers:
         status = await service.status()
-        return templates.TemplateResponse(
+        return render_template(
             "partials/bridge_service_status.html",
-            {"request": request, "service_status": status, "result": result},
+            request,
+            service_status=status,
+            result=result,
         )
     return JSONResponse(result.model_dump())
 
@@ -165,9 +169,11 @@ async def bridge_service_restart(
     result = await service.restart()
     if "hx-request" in request.headers:
         status = await service.status()
-        return templates.TemplateResponse(
+        return render_template(
             "partials/bridge_service_status.html",
-            {"request": request, "service_status": status, "result": result},
+            request,
+            service_status=status,
+            result=result,
         )
     return JSONResponse(result.model_dump())
 
@@ -281,13 +287,11 @@ async def bridge_page(
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
 ) -> object:
     status = await proxy.get_status()
-    return templates.TemplateResponse(
+    return render_template(
         "bridge/status.html",
-        {
-            "request": request,
-            "status": status,
-            "offline": status is None,
-        },
+        request,
+        status=status,
+        offline=status is None,
     )
 
 
@@ -299,14 +303,12 @@ async def bridge_stats_page(
 ) -> object:
     stats = await proxy.get_stats()
     status = await proxy.get_status()
-    return templates.TemplateResponse(
+    return render_template(
         "bridge/stats.html",
-        {
-            "request": request,
-            "stats": stats,
-            "status": status,
-            "offline": status is None,
-        },
+        request,
+        stats=stats,
+        status=status,
+        offline=status is None,
     )
 
 
@@ -316,9 +318,4 @@ async def bridge_tnc_page(
     proxy: Annotated[BridgeProxy, Depends(get_bridge_proxy)],
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
 ) -> object:
-    return templates.TemplateResponse(
-        "bridge/tnc.html",
-        {
-            "request": request,
-        },
-    )
+    return render_template("bridge/tnc.html", request)

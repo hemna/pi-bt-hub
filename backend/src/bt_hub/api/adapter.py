@@ -10,7 +10,13 @@ from fastapi.templating import Jinja2Templates  # noqa: TC002
 
 from bt_hub.api import AdapterUnavailableError
 from bt_hub.config import get_settings
-from bt_hub.deps import get_bridge_service, get_bt_bridge_client, get_device_store, get_templates
+from bt_hub.deps import (
+    get_bridge_service,
+    get_bt_bridge_client,
+    get_device_store,
+    get_templates,
+    render_template,
+)
 from bt_hub.models.device import (
     AdapterState,
     PowerRequest,
@@ -80,10 +86,7 @@ async def set_adapter_power(
 
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
-        return templates.TemplateResponse(
-            "partials/adapter_status.html",
-            {"request": request, "adapter": state},
-        )
+        return render_template("partials/adapter_status.html", request, adapter=state)
     return state
 
 
@@ -114,10 +117,7 @@ async def start_scan(
 
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
-        return templates.TemplateResponse(
-            "partials/scan_progress.html",
-            {"request": request, "duration": duration},
-        )
+        return render_template("partials/scan_progress.html", request, duration=duration)
     return ScanResponse(status="scanning", duration_seconds=duration)
 
 
@@ -133,10 +133,7 @@ async def stop_scan(
 
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
-        return templates.TemplateResponse(
-            "partials/scan_stopped.html",
-            {"request": request},
-        )
+        return render_template("partials/scan_stopped.html", request)
     return ScanResponse(status="stopped")
 
 
@@ -198,18 +195,16 @@ async def index_page(
         if d.get("is_favorite", False):
             favorite_count += 1
 
-    return templates.TemplateResponse(
+    return render_template(
         "index.html",
-        {
-            "request": request,
-            "adapter": adapter,
-            "device_count": len(devices),
-            "paired_count": paired_count,
-            "connected_count": connected_count,
-            "favorite_count": favorite_count,
-            "ignored_count": ignored_count,
-            "bridge_status": bridge_status,
-            "bridge_enabled": settings.bridge_enabled,
-            "service_status": service_status,
-        },
+        request,
+        adapter=adapter,
+        device_count=len(devices),
+        paired_count=paired_count,
+        connected_count=connected_count,
+        favorite_count=favorite_count,
+        ignored_count=ignored_count,
+        bridge_status=bridge_status,
+        bridge_enabled=settings.bridge_enabled,
+        service_status=service_status,
     )

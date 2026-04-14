@@ -6,7 +6,11 @@ The singletons are set by main.py lifespan and accessed by API modules.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import inspect
+from typing import TYPE_CHECKING, Any
+
+from starlette.requests import Request
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -23,6 +27,32 @@ _templates: Jinja2Templates | None = None
 _bt_bridge_client: BtBridgeClient | None = None
 _bridge_proxy: BridgeProxy | None = None
 _bridge_service: SystemdService | None = None
+
+
+def render_template(
+    name: str,
+    request: Request,
+    context: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> Response:
+    """Render a template with compatibility for both old and new Starlette versions.
+
+    Starlette 0.36+ changed TemplateResponse signature to use `request` as a
+    keyword argument instead of being part of the context dict.
+    """
+    templates = get_templates()
+    ctx = context or {}
+    ctx.update(kwargs)
+
+    # Check if TemplateResponse accepts 'request' as keyword argument (Starlette 0.36+)
+    sig = inspect.signature(templates.TemplateResponse)
+    if "request" in sig.parameters:
+        # New Starlette API (0.36+)
+        return templates.TemplateResponse(request=request, name=name, context=ctx)
+    else:
+        # Old Starlette API (< 0.36)
+        ctx["request"] = request
+        return templates.TemplateResponse(name, ctx)
 
 
 def get_device_store() -> DeviceStore:

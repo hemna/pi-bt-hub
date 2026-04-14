@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates  # noqa: TC002
 
-from bt_hub.deps import get_templates
+from bt_hub.deps import get_templates, render_template
 from bt_hub.services.log_handler import get_sse_log_handler
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,7 @@ async def logs_page(
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
 ) -> object:
     """Serve the log viewer page."""
-    return templates.TemplateResponse(
-        "logs.html",
-        {"request": request},
-    )
+    return render_template("logs.html", request)
 
 
 @router.get("/api/logs/stream")
