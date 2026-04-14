@@ -1480,6 +1480,43 @@ img {
   border-width: 0;
 }
 
+/* =========================================
+   Site Footer
+   ========================================= */
+
+.site-footer {
+  margin-top: 2rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.site-footer .container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.site-footer__separator {
+  opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+  .site-footer .container {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .site-footer__separator {
+    display: none;
+  }
+}
+
 /* HTMX indicator */
 .htmx-indicator {
   display: none;
