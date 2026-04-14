@@ -62,9 +62,8 @@
             if (this.scanning) {
               this.scanning = false;
               clearInterval(this._timer);
-              // Update the global store so the button updates
-              if (Alpine.store('scan')) Alpine.store('scan').stop();
-              // Don't reload - keep showing scan results
+              // Dispatch custom event so the button updates
+              window.dispatchEvent(new CustomEvent('scan-stopped'));
             }
           }, {{ (duration | default(10)) * 1000 + 3000 }});
         }
@@ -104,9 +103,8 @@
           scanning = false;
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
-          // Update the global store so the button updates
-          if (Alpine.store('scan')) Alpine.store('scan').stop();
-          // Don't reload - keep showing scan results
+          // Dispatch custom event so the button updates
+          window.dispatchEvent(new CustomEvent('scan-stopped'));
         }
       ">
 

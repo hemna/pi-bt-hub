@@ -9,10 +9,12 @@
 </div>
 
 <!-- Scan Controls -->
-<div class="card mb-4" x-data x-init="$store.scan.active = {{ 'true' if is_scanning else 'false' }}">
+<div class="card mb-4" x-data="{ scanning: {{ 'true' if is_scanning else 'false' }} }" 
+     @scan-stopped.window="scanning = false"
+     @scan-started.window="scanning = true">
   <div class="card__header">
     <h2>Scan for Devices</h2>
-    <span class="badge badge--pairing" x-show="$store.scan.active">Scanning...</span>
+    <span class="badge badge--pairing" x-show="scanning">Scanning...</span>
   </div>
   <div class="card__body">
     <p style="margin-bottom: 1rem; color: var(--text-secondary);">
@@ -21,21 +23,21 @@
     
     <div class="action-group">
       <button class="btn btn--primary"
-              x-show="!$store.scan.active"
+              x-show="!scanning"
               hx-post="/api/scan/start"
               hx-target="#device-list"
               hx-swap="innerHTML"
               hx-indicator=".scan-indicator"
-              @click="$store.scan.start()">
+              @click="scanning = true">
         Start Scan
         <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
       </button>
       <button class="btn btn--danger"
-              x-show="$store.scan.active"
+              x-show="scanning"
               hx-post="/api/scan/stop"
               hx-target="#scan-status"
               hx-indicator=".scan-indicator"
-              @click="$store.scan.stop()">
+              @click="scanning = false">
         Stop Scan
         <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
       </button>
