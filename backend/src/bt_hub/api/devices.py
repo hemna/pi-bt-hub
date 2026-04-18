@@ -15,8 +15,13 @@ from bt_hub.api import (
     DeviceNotFoundError,
     InvalidMacAddressError,
 )
-from bt_hub.api.adapter import get_bluetooth_manager
-from bt_hub.deps import get_device_store, get_templates, get_templates_optional, render_template
+from bt_hub.deps import (
+    get_bluetooth_manager,
+    get_device_store,
+    get_templates,
+    get_templates_optional,
+    render_template,
+)
 from bt_hub.models.device import (
     ConnectionState,
     DeviceActionResponse,

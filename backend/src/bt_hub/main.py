@@ -19,6 +19,7 @@ from bt_hub.deps import (
     get_device_store,
     get_event_bus,
     get_templates,
+    set_bluetooth_manager,
     set_bridge_proxy,
     set_bridge_service,
     set_bt_bridge_client,
@@ -83,7 +84,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     templates.env.globals["bridge_enabled"] = settings.bridge_enabled
     set_templates(templates)
 
-    from bt_hub.api.adapter import set_bluetooth_manager
     from bt_hub.services.bluetooth import BlueZManager
 
     adapter_name = settings.adapter or "hci0"

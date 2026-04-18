@@ -15,6 +15,7 @@ from starlette.responses import Response
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
 
+    from bt_hub.services.bluetooth import BlueZManager
     from bt_hub.services.bridge_proxy import BridgeProxy
     from bt_hub.services.bt_bridge_client import BtBridgeClient
     from bt_hub.services.device_store import DeviceStore
@@ -27,6 +28,7 @@ _templates: Jinja2Templates | None = None
 _bt_bridge_client: BtBridgeClient | None = None
 _bridge_proxy: BridgeProxy | None = None
 _bridge_service: SystemdService | None = None
+_bluetooth_manager: BlueZManager | None = None
 
 
 def render_template(
@@ -118,3 +120,17 @@ def get_bridge_service() -> SystemdService:
 def set_bridge_service(service: SystemdService) -> None:
     global _bridge_service
     _bridge_service = service
+
+
+def get_bluetooth_manager() -> BlueZManager:
+    """Return the global BlueZManager instance."""
+    from bt_hub.api import AdapterUnavailableError
+
+    if _bluetooth_manager is None:
+        raise AdapterUnavailableError("BlueZManager not initialized")
+    return _bluetooth_manager
+
+
+def set_bluetooth_manager(manager: BlueZManager) -> None:
+    global _bluetooth_manager
+    _bluetooth_manager = manager

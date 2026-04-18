@@ -98,19 +98,16 @@ async def test_client(
     from fastapi.templating import Jinja2Templates
 
     # Import main first to avoid circular import (main.create_app imports adapter.router)
-    from bt_hub.api.adapter import get_bluetooth_manager
     from bt_hub.main import (
         create_app,
         get_device_store,
         get_event_bus,
     )
 
-    from bt_hub.deps import get_bt_bridge_client, get_templates, set_templates
+    from bt_hub.deps import get_bluetooth_manager, get_bt_bridge_client, get_templates, set_templates
 
     # Initialize templates before creating the app
-    template_dir = (
-        Path(__file__).parent.parent / "backend" / "src" / "bt_hub" / "templates"
-    )
+    template_dir = Path(__file__).parent.parent / "backend" / "src" / "bt_hub" / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
     set_templates(templates)
 
