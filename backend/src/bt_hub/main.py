@@ -11,7 +11,6 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from bt_hub.api import BluetoothError
 from bt_hub.config import get_settings
@@ -27,9 +26,7 @@ from bt_hub.deps import (
     set_event_bus,
     set_templates,
 )
-from bt_hub.services.bt_bridge_client import BtBridgeClient
-from bt_hub.services.device_store import DeviceStore
-from bt_hub.services.event_bus import EventBus
+from bt_hub.lifecycle import create_templates, shutdown_services, startup_services
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -44,68 +41,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
     settings = get_settings()
 
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    # Start all services via lifecycle module
+    services = await startup_services(settings)
 
-    from bt_hub.services.log_handler import setup_sse_logging
+    # Set deps singletons for backward compatibility with existing Depends() patterns
+    set_device_store(services.device_store)
+    set_event_bus(services.event_bus)
+    set_bt_bridge_client(services.bt_bridge_client)
+    if services.bridge_proxy:
+        set_bridge_proxy(services.bridge_proxy)
+    if services.systemd_service:
+        set_bridge_service(services.systemd_service)
+    if services.bluez_mgr:
+        set_bluetooth_manager(services.bluez_mgr)
 
-    setup_sse_logging(level=getattr(logging, settings.log_level.upper(), logging.INFO))
-
-    store = DeviceStore(settings.db_path)
-    await store.init_db()
-    set_device_store(store)
-
-    bus = EventBus()
-    set_event_bus(bus)
-
-    # Legacy bridge client (for dashboard status probe)
-    bridge_client = BtBridgeClient(settings.bridge_url if settings.bridge_enabled else None)
-    set_bt_bridge_client(bridge_client)
-
-    # Bridge proxy (only when bridge is enabled)
-    bridge_proxy = None
-    if settings.bridge_enabled:
-        from bt_hub.services.bridge_proxy import BridgeProxy
-        from bt_hub.services.systemd_service import SystemdService
-
-        bridge_proxy = BridgeProxy(settings.bridge_url)
-        await bridge_proxy.startup()
-        set_bridge_proxy(bridge_proxy)
-
-        bridge_service = SystemdService("bt-bridge.service")
-        set_bridge_service(bridge_service)
-
-        logger.info("Bridge proxy enabled: %s", settings.bridge_url)
-
-    template_dir = Path(__file__).parent / "templates"
-    templates = Jinja2Templates(directory=str(template_dir))
-    templates.env.globals["bridge_enabled"] = settings.bridge_enabled
+    # Templates
+    templates = create_templates(bridge_enabled=settings.bridge_enabled)
     set_templates(templates)
-
-    from bt_hub.services.bluetooth import BlueZManager
-
-    adapter_name = settings.adapter or "hci0"
-    bt_manager = BlueZManager(bus, adapter_name=adapter_name)
-    try:
-        await bt_manager.startup()
-    except Exception:
-        logger.warning(
-            "BlueZManager failed to start - Bluetooth features will be unavailable",
-            exc_info=True,
-        )
-    set_bluetooth_manager(bt_manager)
 
     logger.info("Pi BT Hub started on %s:%d", settings.host, settings.port)
 
     yield
 
-    if bridge_proxy:
-        await bridge_proxy.shutdown()
-    await bt_manager.shutdown()
-    await store.close()
-    logger.info("Pi BT Hub shut down")
+    await shutdown_services(services)
 
 
 def create_app() -> FastAPI:
@@ -115,7 +73,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Pi BT Hub",
         description="Unified Bluetooth management and bridge web UI",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -143,6 +101,7 @@ def create_app() -> FastAPI:
             content={"error": "validation_error", "message": "; ".join(messages)},
         )
 
+    # Use existing module-level routers for standalone mode (backward compatibility)
     from bt_hub.api.adapter import router as adapter_router
     from bt_hub.api.devices import router as devices_router
     from bt_hub.api.logs import router as logs_router
