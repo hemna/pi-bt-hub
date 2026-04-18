@@ -13,9 +13,8 @@ from typing import TYPE_CHECKING
 
 from fastapi.templating import Jinja2Templates
 
-from bt_hub.config import Settings
-
 if TYPE_CHECKING:
+    from bt_hub.config import Settings
     from bt_hub.services.bluetooth import BlueZManager
     from bt_hub.services.bridge_proxy import BridgeProxy
     from bt_hub.services.bt_bridge_client import BtBridgeClient

@@ -1076,11 +1076,11 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
                 current_filter = f
                 break
         should_hide = False
-        if current_filter == "favorites" and not device.is_favorite:
-            should_hide = True
-        elif current_filter == "all" and not device.in_range:
-            should_hide = True
-        elif current_filter == "history" and device.in_range:
+        if (
+            (current_filter == "favorites" and not device.is_favorite)
+            or (current_filter == "all" and not device.in_range)
+            or (current_filter == "history" and device.in_range)
+        ):
             should_hide = True
         if should_hide:
             return Response(content="", status_code=200, media_type="text/html")
@@ -1117,18 +1117,16 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
                 current_filter = f
                 break
         should_hide = False
-        if is_ignored and current_filter != "ignored":
-            should_hide = True
-        elif not is_ignored and current_filter == "ignored":
-            should_hide = True
-        elif current_filter == "all" and not device.in_range:
-            should_hide = True
-        elif current_filter == "history" and device.in_range:
-            should_hide = True
-        elif (
-            (current_filter == "paired" and not device.paired)
-            or (current_filter == "connected" and not device.connected)
-            or (current_filter == "favorites" and not device.is_favorite)
+        if (
+            (is_ignored and current_filter != "ignored")
+            or (not is_ignored and current_filter == "ignored")
+            or (current_filter == "all" and not device.in_range)
+            or (current_filter == "history" and device.in_range)
+            or (
+                (current_filter == "paired" and not device.paired)
+                or (current_filter == "connected" and not device.connected)
+                or (current_filter == "favorites" and not device.is_favorite)
+            )
         ):
             should_hide = True
         if should_hide:

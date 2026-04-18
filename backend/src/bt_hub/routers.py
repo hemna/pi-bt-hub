@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 
-from bt_hub.api import adapter, bridge, devices, logs
+from bt_hub.api import adapter, bridge, devices, logs, websocket
 from bt_hub.api import settings as settings_mod
-from bt_hub.api import websocket
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates

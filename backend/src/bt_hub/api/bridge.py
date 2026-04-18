@@ -453,11 +453,16 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
         result = await _get_service().install_bt_bridge()
         if "hx-request" in request.headers:
             status_class = "alert--success" if result.success else "alert--error"
-            html = f"""<div id="install-result-banner" class="alert {status_class}" style="margin-bottom: 1rem;">
-                {result.message}
-                {"<br><small>Page will reload in 2 seconds...</small>" if result.success else ""}
-            </div>
-            <pre style="white-space: pre-wrap; word-wrap: break-word;">{result.output}</pre>"""
+            reload_hint = (
+                "<br><small>Page will reload in 2 seconds...</small>" if result.success else ""
+            )
+            html = (
+                f'<div id="install-result-banner" class="alert {status_class}"'
+                f' style="margin-bottom: 1rem;">'
+                f"{result.message}{reload_hint}</div>"
+                f'<pre style="white-space: pre-wrap; word-wrap: break-word;">'
+                f"{result.output}</pre>"
+            )
             return HTMLResponse(html)
         return JSONResponse(result.model_dump())
 

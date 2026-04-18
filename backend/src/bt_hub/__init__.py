@@ -19,8 +19,8 @@ from bt_hub.lifecycle import (
 from bt_hub.routers import create_api_routers, create_page_routers, create_ws_router
 
 __all__ = [
-    "BtHubServices",
     "DEFAULT_TEMPLATE_DIR",
+    "BtHubServices",
     "ServiceContainer",
     "create_api_routers",
     "create_page_routers",

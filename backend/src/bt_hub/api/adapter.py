@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Annotated
 
@@ -17,17 +18,14 @@ from bt_hub.deps import (
     get_device_store,
     get_templates,
     render_template,
-    set_bluetooth_manager,
 )
 from bt_hub.models.device import (
     AdapterState,
-    PowerRequest,
     ScanResponse,
 )
 from bt_hub.services.bluetooth import BlueZManager  # noqa: TC001
 from bt_hub.services.bt_bridge_client import BtBridgeClient  # noqa: TC001
 from bt_hub.services.device_store import DeviceStore  # noqa: TC001
-from bt_hub.services.systemd_service import SystemdService  # noqa: TC001
 
 if TYPE_CHECKING:
     from bt_hub.lifecycle import ServiceContainer
@@ -306,10 +304,8 @@ def create_page_router(
         if settings.bridge_enabled and container.services.bt_bridge_client:
             bridge_status = await container.services.bt_bridge_client.get_status()
             if container.services.systemd_service:
-                try:
+                with contextlib.suppress(Exception):
                     service_status = await container.services.systemd_service.status()
-                except Exception:
-                    pass
 
         all_devices = await store.get_all_devices(include_ignored=True)
         devices = [d for d in all_devices if not d.get("is_ignored", False)]
