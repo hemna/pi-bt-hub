@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -33,6 +33,9 @@ from bt_hub.models.device import (
 )
 from bt_hub.services.bluetooth import BlueZManager  # noqa: TC001
 from bt_hub.services.device_store import DeviceStore  # noqa: TC001
+
+if TYPE_CHECKING:
+    from bt_hub.lifecycle import ServiceContainer
 
 logger = logging.getLogger(__name__)
 
@@ -825,3 +828,442 @@ async def device_detail_page(
     device = _build_runtime_state(stored, live)
 
     return render_template("device.html", request, device=device)
+
+
+# --- Factory functions for library usage ---
+
+
+def create_api_router(container: ServiceContainer) -> APIRouter:
+    """Create an APIRouter with device API endpoints using the ServiceContainer.
+
+    Includes all /api/devices/* routes. Handlers access container.services at request time.
+    """
+    from bt_hub.api import AdapterUnavailableError
+
+    api = APIRouter()
+
+    def _get_bt() -> BlueZManager:
+        assert container.services is not None
+        bt = container.services.bluez_mgr
+        if bt is None:
+            raise AdapterUnavailableError("BlueZManager not initialized")
+        return bt
+
+    def _get_store() -> DeviceStore:
+        assert container.services is not None
+        return container.services.device_store
+
+    @api.get("/api/devices", response_model=DeviceListResponse)
+    async def list_devices_factory(
+        filter: str = Query(default="all", pattern="^(all|paired|connected|favorites|ignored)$"),
+        sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
+    ) -> DeviceListResponse:
+        bt = _get_bt()
+        store = _get_store()
+        try:
+            live_states = await bt.get_all_device_states()
+        except BluetoothError:
+            live_states = {}
+        store_filter = filter if filter in ("favorites", "ignored") else "all"
+        include_ignored = filter == "ignored"
+        stored_devices = await store.get_all_devices(
+            filter_type=store_filter, sort_by=sort, include_ignored=include_ignored
+        )
+        stored_macs = {d["mac_address"] for d in stored_devices}
+        for mac, live_data in live_states.items():
+            if mac not in stored_macs:
+                new_record = await store.upsert_device(
+                    mac, name=live_data.get("name"), device_type=live_data.get("device_type")
+                )
+                stored_devices.append(new_record)
+        devices: list[DeviceRuntimeState] = []
+        for stored in stored_devices:
+            mac = str(stored["mac_address"])
+            live = live_states.get(mac)
+            runtime = _build_runtime_state(stored, live)
+            if filter == "paired" and not runtime.paired:
+                continue
+            if filter == "connected" and not runtime.connected:
+                continue
+            devices.append(runtime)
+        return DeviceListResponse(devices=devices, count=len(devices))
+
+    @api.get("/api/devices/{mac_address}", response_model=DeviceRuntimeState)
+    async def get_device_factory(mac_address: str) -> DeviceRuntimeState:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        stored = await store.get_device(mac)
+        if not stored:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        return _build_runtime_state(stored, live)
+
+    @api.patch("/api/devices/{mac_address}", response_model=DeviceRuntimeState)
+    async def update_device_factory(mac_address: str, body: DeviceUpdate) -> DeviceRuntimeState:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        update_fields: dict[str, Any] = {}
+        if body.alias is not None:
+            update_fields["alias"] = body.alias
+        if body.is_favorite is not None:
+            update_fields["is_favorite"] = body.is_favorite
+        if body.is_ignored is not None:
+            update_fields["is_ignored"] = body.is_ignored
+        if body.notes is not None:
+            update_fields["notes"] = body.notes
+        updated = await store.update_device(mac, **update_fields)
+        if updated is None:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        return _build_runtime_state(updated, live)
+
+    @api.delete("/api/devices/{mac_address}")
+    async def delete_device_factory(mac_address: str) -> dict[str, str]:
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        deleted = await store.delete_device(mac)
+        if not deleted:
+            raise DeviceNotFoundError(mac)
+        return {"status": "deleted", "mac_address": mac}
+
+    @api.post("/api/devices/{mac_address}/pair", response_model=None)
+    async def pair_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.pair_device(mac)
+        await store.upsert_device(mac)
+        stored = await store.get_device(mac)
+        if stored is None:
+            stored = await store.upsert_device(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+        if htmx_resp is not None:
+            return htmx_resp
+        return JSONResponse(DeviceActionResponse(mac_address=mac, status="paired").model_dump())
+
+    @api.post("/api/devices/{mac_address}/connect", response_model=None)
+    async def connect_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.connect_device(mac)
+        now = datetime.now(UTC).isoformat()
+        await store.update_device(mac, last_connected=now)
+        stored = await store.get_device(mac)
+        if stored is None:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+        if htmx_resp is not None:
+            return htmx_resp
+        return JSONResponse(DeviceActionResponse(mac_address=mac, status="connected").model_dump())
+
+    @api.post("/api/devices/{mac_address}/disconnect", response_model=None)
+    async def disconnect_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.disconnect_device(mac)
+        stored = await store.get_device(mac)
+        if stored is None:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+        if htmx_resp is not None:
+            return htmx_resp
+        return JSONResponse(
+            DeviceActionResponse(mac_address=mac, status="disconnected").model_dump()
+        )
+
+    @api.post("/api/devices/{mac_address}/trust", response_model=None)
+    async def trust_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.trust_device(mac)
+        stored = await store.get_device(mac)
+        if not stored:
+            stored = await store.upsert_device(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+        if htmx_resp is not None:
+            return htmx_resp
+        return JSONResponse(device.model_dump(mode="json"))
+
+    @api.post("/api/devices/{mac_address}/untrust", response_model=None)
+    async def untrust_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.untrust_device(mac)
+        stored = await store.get_device(mac)
+        if not stored:
+            stored = await store.upsert_device(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+        if htmx_resp is not None:
+            return htmx_resp
+        return JSONResponse(device.model_dump(mode="json"))
+
+    @api.post("/api/devices/{mac_address}/remove", response_model=None)
+    async def remove_device_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        await bt.remove_device(mac)
+        if "hx-request" in request.headers:
+            stored = await store.get_device(mac)
+            if stored:
+                device = _build_runtime_state(stored, None)
+                htmx_resp = _htmx_device_response(request, get_templates_optional(), device)
+                if htmx_resp is not None:
+                    return htmx_resp
+        return {"status": "removed", "mac_address": mac}
+
+    @api.post("/api/devices/{mac_address}/favorite")
+    async def toggle_favorite_factory(
+        mac_address: str,
+        request: Request,
+        is_favorite: bool = Form(...),
+    ) -> Response:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        updated = await store.update_device(mac, is_favorite=is_favorite)
+        if updated is None:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(updated, live)
+        target = request.headers.get("hx-target", "")
+        if target.startswith("detail-favorite-"):
+            return render_template("partials/favorite_button_detail.html", request, device=device)
+        current_url = request.headers.get("hx-current-url", "")
+        current_filter = "all"
+        for f in ("paired", "connected", "favorites", "ignored", "history"):
+            if f"filter={f}" in current_url:
+                current_filter = f
+                break
+        should_hide = False
+        if current_filter == "favorites" and not device.is_favorite:
+            should_hide = True
+        elif current_filter == "all" and not device.in_range:
+            should_hide = True
+        elif current_filter == "history" and device.in_range:
+            should_hide = True
+        if should_hide:
+            return Response(content="", status_code=200, media_type="text/html")
+        if target.startswith("device-row-"):
+            template_name = "partials/device_row.html"
+        else:
+            template_name = "partials/device_card.html"
+        return render_template(template_name, request, device=device)
+
+    @api.post("/api/devices/{mac_address}/ignore")
+    async def toggle_ignored_factory(
+        mac_address: str,
+        request: Request,
+        is_ignored: bool = Form(...),
+    ) -> Response:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        updated = await store.update_device(mac, is_ignored=is_ignored)
+        if updated is None:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac)
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(updated, live)
+        target = request.headers.get("hx-target", "")
+        if target.startswith("detail-ignored-"):
+            return render_template("partials/ignored_button_detail.html", request, device=device)
+        current_url = request.headers.get("hx-current-url", "")
+        current_filter = "all"
+        for f in ("paired", "connected", "favorites", "ignored", "history"):
+            if f"filter={f}" in current_url:
+                current_filter = f
+                break
+        should_hide = False
+        if is_ignored and current_filter != "ignored":
+            should_hide = True
+        elif not is_ignored and current_filter == "ignored":
+            should_hide = True
+        elif current_filter == "all" and not device.in_range:
+            should_hide = True
+        elif current_filter == "history" and device.in_range:
+            should_hide = True
+        elif (
+            (current_filter == "paired" and not device.paired)
+            or (current_filter == "connected" and not device.connected)
+            or (current_filter == "favorites" and not device.is_favorite)
+        ):
+            should_hide = True
+        if should_hide:
+            return Response(content="", status_code=200, media_type="text/html")
+        if target.startswith("device-row-"):
+            template_name = "partials/device_row.html"
+        else:
+            template_name = "partials/device_card.html"
+        return render_template(template_name, request, device=device)
+
+    return api
+
+
+def create_page_router(
+    container: ServiceContainer,
+    templates: Jinja2Templates,
+    active_page_prefix: str = "bluetooth",
+) -> APIRouter:
+    """Create an APIRouter with device page endpoints using the ServiceContainer."""
+    pages = APIRouter()
+
+    def _get_bt() -> BlueZManager | None:
+        assert container.services is not None
+        return container.services.bluez_mgr
+
+    def _get_store() -> DeviceStore:
+        assert container.services is not None
+        return container.services.device_store
+
+    @pages.get("/devices")
+    async def devices_page_factory(
+        request: Request,
+        filter: str = Query(
+            default="all", pattern="^(all|paired|connected|favorites|ignored|history)$"
+        ),
+        sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
+    ) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        try:
+            live_states = await bt.get_all_device_states() if bt else {}
+        except BluetoothError:
+            live_states = {}
+        store_filter = filter if filter in ("favorites", "ignored") else "all"
+        include_ignored = filter == "ignored"
+        stored_devices = await store.get_all_devices(
+            filter_type=store_filter, sort_by=sort, include_ignored=include_ignored
+        )
+        all_devices_for_counts = await store.get_all_devices(
+            filter_type="all", sort_by="last_seen", include_ignored=True
+        )
+        stored_macs = {d["mac_address"] for d in stored_devices}
+        all_macs_for_counts = {d["mac_address"] for d in all_devices_for_counts}
+        ignored_macs = {d["mac_address"] for d in all_devices_for_counts if d.get("is_ignored")}
+        for mac, live_data in live_states.items():
+            new_record = None
+            if mac not in all_macs_for_counts:
+                new_record = await store.upsert_device(
+                    mac, name=live_data.get("name"), device_type=live_data.get("device_type")
+                )
+                all_devices_for_counts.append(new_record)
+            if mac not in stored_macs and filter != "ignored" and mac not in ignored_macs:
+                if new_record is None:
+                    new_record = await store.upsert_device(
+                        mac, name=live_data.get("name"), device_type=live_data.get("device_type")
+                    )
+                stored_devices.append(new_record)
+        paired_count = 0
+        connected_count = 0
+        favorite_count = 0
+        ignored_count = 0
+        in_range_count = 0
+        history_count = 0
+        for stored in all_devices_for_counts:
+            mac = str(stored["mac_address"])
+            live = live_states.get(mac)
+            runtime = _build_runtime_state(stored, live)
+            if runtime.is_ignored:
+                ignored_count += 1
+                continue
+            if runtime.is_favorite:
+                favorite_count += 1
+            if runtime.paired:
+                paired_count += 1
+            if runtime.connected:
+                connected_count += 1
+            if runtime.in_range:
+                in_range_count += 1
+            else:
+                history_count += 1
+        devices: list[DeviceRuntimeState] = []
+        for stored in stored_devices:
+            mac = str(stored["mac_address"])
+            live = live_states.get(mac)
+            runtime = _build_runtime_state(stored, live)
+            if filter == "paired" and not runtime.paired:
+                continue
+            if filter == "connected" and not runtime.connected:
+                continue
+            if filter == "all" and not runtime.in_range:
+                continue
+            if filter == "history" and runtime.in_range:
+                continue
+            devices.append(runtime)
+        return render_template(
+            "devices.html",
+            request,
+            devices=devices,
+            device_count=in_range_count,
+            paired_count=paired_count,
+            connected_count=connected_count,
+            favorite_count=favorite_count,
+            ignored_count=ignored_count,
+            history_count=history_count,
+            current_filter=filter,
+            current_sort=sort,
+            is_scanning=bt.is_scanning if bt else False,
+            active_page=active_page_prefix,
+        )
+
+    @pages.get("/devices/{mac_address}")
+    async def device_detail_page_factory(mac_address: str, request: Request) -> object:
+        bt = _get_bt()
+        store = _get_store()
+        mac = _validate_mac(mac_address)
+        stored = await store.get_device(mac)
+        if not stored:
+            raise DeviceNotFoundError(mac)
+        try:
+            live = await bt.get_device_state(mac) if bt else None
+        except (DeviceNotFoundError, BluetoothError):
+            live = None
+        device = _build_runtime_state(stored, live)
+        return render_template(
+            "device.html", request, device=device, active_page=active_page_prefix
+        )
+
+    return pages
