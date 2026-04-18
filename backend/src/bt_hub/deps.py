@@ -35,14 +35,20 @@ def render_template(
     name: str,
     request: Request,
     context: dict[str, Any] | None = None,
+    *,
+    templates: Jinja2Templates | None = None,
     **kwargs: Any,
 ) -> Response:
     """Render a template with compatibility for both old and new Starlette versions.
 
     Starlette 0.36+ changed TemplateResponse signature to use `request` as a
     keyword argument instead of being part of the context dict.
+
+    If ``templates`` is provided, it is used directly. Otherwise falls back to
+    the module-level singleton (``get_templates()``).
     """
-    templates = get_templates()
+    if templates is None:
+        templates = get_templates()
     ctx = context or {}
     ctx.update(kwargs)
 
