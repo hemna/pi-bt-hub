@@ -3,6 +3,7 @@
 {% block title %}Logs - Pi BT Hub{% endblock %}
 
 {% block content %}
+<div class="bluetooth-content">
 <style>
   /* Full-height layout for log viewer */
   .logs-page {
@@ -296,4 +297,5 @@
   document.addEventListener('DOMContentLoaded', startLogSSE);
 })();
 </script>
+</div>
 {% endblock %}

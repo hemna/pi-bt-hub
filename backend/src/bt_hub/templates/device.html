@@ -3,6 +3,7 @@
 {% block title %}{{ device.alias or device.name or device.mac_address }} - Pi BT Hub{% endblock %}
 
 {% block content %}
+<div class="bluetooth-content">
 <div x-data="{ showDeleteModal: false }">
 
   <!-- Back link -->
@@ -243,5 +244,6 @@
     </div>
   </div>
 
+</div>
 </div>
 {% endblock %}

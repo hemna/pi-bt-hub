@@ -7,9 +7,11 @@ that can be used by both the standalone app and external host apps (e.g., digipi
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from fastapi.templating import Jinja2Templates
 
 from bt_hub.config import Settings
 
@@ -25,6 +27,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def create_templates(
+    template_dirs: list[Path] | None = None,
+    bridge_enabled: bool = False,
+) -> Jinja2Templates:
+    """Create a Jinja2Templates instance with optional directory overrides.
+
+    When ``template_dirs`` is provided, uses Jinja2's ChoiceLoader to search
+    override directories first, then the default bt-hub template directory.
+    This allows the host app to override ``base.html`` while keeping all other
+    templates from bt-hub.
+    """
+    default_dir = DEFAULT_TEMPLATE_DIR
+    if template_dirs:
+        from jinja2 import ChoiceLoader, FileSystemLoader
+
+        loaders = [FileSystemLoader(str(d)) for d in template_dirs]
+        loaders.append(FileSystemLoader(str(default_dir)))
+        loader = ChoiceLoader(loaders)
+        templates = Jinja2Templates(directory=str(default_dir))
+        templates.env.loader = loader
+    else:
+        templates = Jinja2Templates(directory=str(default_dir))
+
+    templates.env.globals["bridge_enabled"] = bridge_enabled
+    return templates
 
 
 @dataclass
