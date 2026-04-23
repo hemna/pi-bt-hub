@@ -59,7 +59,8 @@ img {
   padding: 0 1rem;
   background-color: var(--nav-bg);
   color: var(--nav-text);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--border);
 }
 
 .nav__brand {
@@ -98,14 +99,14 @@ img {
 
 .nav__link:hover {
   opacity: 1;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--nav-hover);
   text-decoration: none;
   color: var(--nav-text);
 }
 
 .nav__link--active {
   opacity: 1;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--nav-active);
 }
 
 .nav__actions {

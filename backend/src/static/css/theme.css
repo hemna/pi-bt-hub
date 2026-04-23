@@ -14,8 +14,10 @@
   --border: #e5e7eb;
   --border-radius: 8px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --nav-bg: #1e293b;
-  --nav-text: #f1f5f9;
+  --nav-bg: #ffffff;
+  --nav-text: #1a1a1a;
+  --nav-hover: rgba(0, 0, 0, 0.06);
+  --nav-active: rgba(0, 0, 0, 0.1);
   --card-bg: #ffffff;
 }
 
@@ -34,6 +36,8 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --nav-bg: #0f172a;
   --nav-text: #f1f5f9;
+  --nav-hover: rgba(255, 255, 255, 0.1);
+  --nav-active: rgba(255, 255, 255, 0.15);
   --card-bg: #1e293b;
 }
 
@@ -53,6 +57,8 @@
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     --nav-bg: #0f172a;
     --nav-text: #f1f5f9;
+    --nav-hover: rgba(255, 255, 255, 0.1);
+    --nav-active: rgba(255, 255, 255, 0.15);
     --card-bg: #1e293b;
   }
 }
