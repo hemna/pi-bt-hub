@@ -693,17 +693,19 @@ async def devices_page(
     except BluetoothError:
         live_states = {}
 
-    # Get stored devices - exclude ignored unless specifically filtering for them
-    store_filter = filter if filter in ("favorites", "ignored") else "all"
-    include_ignored = filter == "ignored"  # Only show ignored devices on the Ignored filter
-    stored_devices = await store.get_all_devices(
-        filter_type=store_filter, sort_by=sort, include_ignored=include_ignored
+    # Single DB query: get ALL devices (including ignored) for counts and display
+    all_devices_for_counts = await store.get_all_devices(
+        filter_type="all", sort_by=sort, include_ignored=True
     )
 
-    # Also get ALL devices (including ignored) to calculate accurate counts for filter buttons
-    all_devices_for_counts = await store.get_all_devices(
-        filter_type="all", sort_by="last_seen", include_ignored=True
-    )
+    # Build the filtered view from the full list (avoids a second DB query)
+    if filter == "favorites":
+        stored_devices = [d for d in all_devices_for_counts if d.get("is_favorite")]
+    elif filter == "ignored":
+        stored_devices = [d for d in all_devices_for_counts if d.get("is_ignored")]
+    else:
+        # "all", "paired", "connected", "history" — exclude ignored
+        stored_devices = [d for d in all_devices_for_counts if not d.get("is_ignored")]
 
     # Upsert any BlueZ-known devices not yet in the store
     stored_macs = {d["mac_address"] for d in stored_devices}

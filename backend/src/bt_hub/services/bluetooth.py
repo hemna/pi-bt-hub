@@ -176,19 +176,33 @@ class BlueZManager:
         method: str,
         signature: str = "",
         body: list[Any] | None = None,
+        timeout: float = 5.0,
     ) -> Any:
         """Call a D-Bus method and return the reply body."""
         bus = self._ensure_bus()
         try:
-            reply = await bus.call(
-                Message(
-                    destination=BLUEZ_SERVICE,
-                    path=path,
-                    interface=interface,
-                    member=method,
-                    signature=signature,
-                    body=body or [],
-                )
+            reply = await asyncio.wait_for(
+                bus.call(
+                    Message(
+                        destination=BLUEZ_SERVICE,
+                        path=path,
+                        interface=interface,
+                        member=method,
+                        signature=signature,
+                        body=body or [],
+                    )
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                "D-Bus call %s.%s on %s timed out after %.1fs",
+                interface, method, path, timeout,
+            )
+            raise BluetoothError(
+                error="dbus_timeout",
+                message=f"D-Bus call {method} timed out after {timeout}s",
+                status_code=504,
             )
         except Exception as exc:
             logger.error("D-Bus call %s.%s on %s failed: %s", interface, method, path, exc)

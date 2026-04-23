@@ -772,6 +772,29 @@ img {
   border-color: var(--accent);
 }
 
+/* Loading state: HTMX adds htmx-request class while request is in-flight */
+.filter-bar__btn.htmx-request {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.filter-bar__btn.htmx-request::after {
+  content: "";
+  position: absolute;
+  width: 0.875rem;
+  height: 0.875rem;
+  top: 50%;
+  left: 50%;
+  margin-top: -0.4375rem;
+  margin-left: -0.4375rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
 .filter-bar__spacer {
   flex: 1;
 }
