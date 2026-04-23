@@ -268,8 +268,6 @@ async def toggle_favorite(
         current_filter = "favorites"
     elif "filter=ignored" in current_url:
         current_filter = "ignored"
-    elif "filter=history" in current_url:
-        current_filter = "history"
 
     # Determine if device should be hidden from current view
     should_hide = False
@@ -278,9 +276,6 @@ async def toggle_favorite(
         should_hide = True
     elif current_filter == "all" and not device.in_range:
         # "all" only shows in-range devices
-        should_hide = True
-    elif current_filter == "history" and device.in_range:
-        # "history" only shows out-of-range devices
         should_hide = True
 
     if should_hide:
@@ -339,8 +334,6 @@ async def toggle_ignored(
         current_filter = "favorites"
     elif "filter=ignored" in current_url:
         current_filter = "ignored"
-    elif "filter=history" in current_url:
-        current_filter = "history"
 
     # Determine the HTMX target
     target = request.headers.get("hx-target", "")
@@ -365,7 +358,6 @@ async def toggle_ignored(
         favorite_count = 0
         ignored_count = 0
         in_range_count = 0
-        history_count = 0
 
         for d in all_devices:
             d_mac = str(d["mac_address"])
@@ -376,7 +368,6 @@ async def toggle_ignored(
                 ignored_count += 1
                 continue
 
-            # Count in-range vs history (non-ignored only)
             if d_runtime.in_range:
                 in_range_count += 1
                 if d_runtime.paired:
@@ -385,8 +376,6 @@ async def toggle_ignored(
                     connected_count += 1
                 if d_runtime.is_favorite:
                     favorite_count += 1
-            else:
-                history_count += 1
 
         # Render the filter buttons partial
         filter_buttons_html = templates.get_template("partials/device_filter_buttons.html").render(
@@ -396,7 +385,6 @@ async def toggle_ignored(
             connected_count=connected_count,
             favorite_count=favorite_count,
             ignored_count=ignored_count,
-            history_count=history_count,
             current_filter=current_filter,
         )
 
@@ -405,7 +393,6 @@ async def toggle_ignored(
     # - Ignoring from any non-ignored view -> hide
     # - Un-ignoring from ignored view -> hide (device leaves the ignored list)
     # - "all" filter only shows in-range devices -> hide if not in_range
-    # - "history" filter only shows out-of-range devices -> hide if in_range
     # - "paired" filter -> hide if not paired
     # - "connected" filter -> hide if not connected
     # - "favorites" filter -> hide if not favorite
@@ -419,9 +406,6 @@ async def toggle_ignored(
         should_hide = True
     elif current_filter == "all" and not device.in_range:
         # "all" only shows in-range devices
-        should_hide = True
-    elif current_filter == "history" and device.in_range:
-        # "history" only shows out-of-range devices
         should_hide = True
     elif (
         (current_filter == "paired" and not device.paired)
@@ -682,7 +666,7 @@ async def devices_page(
     store: Annotated[DeviceStore, Depends(get_device_store)],
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     filter: str = Query(
-        default="all", pattern="^(all|paired|connected|favorites|ignored|history)$"
+        default="all", pattern="^(all|paired|connected|favorites|ignored)$"
     ),
     sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
 ) -> object:
@@ -704,7 +688,7 @@ async def devices_page(
     elif filter == "ignored":
         stored_devices = [d for d in all_devices_for_counts if d.get("is_ignored")]
     else:
-        # "all", "paired", "connected", "history" — exclude ignored
+        # "all", "paired", "connected" — exclude ignored
         stored_devices = [d for d in all_devices_for_counts if not d.get("is_ignored")]
 
     # Upsert any BlueZ-known devices not yet in the store
@@ -743,7 +727,6 @@ async def devices_page(
     favorite_count = 0
     ignored_count = 0
     in_range_count = 0
-    history_count = 0
 
     for stored in all_devices_for_counts:
         mac = str(stored["mac_address"])
@@ -763,11 +746,8 @@ async def devices_page(
         if runtime.connected:
             connected_count += 1
 
-        # Count in-range vs history (non-ignored only)
         if runtime.in_range:
             in_range_count += 1
-        else:
-            history_count += 1
 
     # Build runtime states for display (from filtered stored_devices)
     devices: list[DeviceRuntimeState] = []
@@ -782,12 +762,8 @@ async def devices_page(
         if filter == "connected" and not runtime.connected:
             continue
 
-        # "all" filter: only show in-range devices (excludes history)
+        # "all" filter: only show in-range devices
         if filter == "all" and not runtime.in_range:
-            continue
-
-        # "history" filter: only show out-of-range devices
-        if filter == "history" and runtime.in_range:
             continue
 
         devices.append(runtime)
@@ -801,7 +777,6 @@ async def devices_page(
         connected_count=connected_count,
         favorite_count=favorite_count,
         ignored_count=ignored_count,
-        history_count=history_count,
         current_filter=filter,
         current_sort=sort,
         is_scanning=bt.is_scanning,
@@ -1073,7 +1048,7 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
             return render_template("partials/favorite_button_detail.html", request, device=device)
         current_url = request.headers.get("hx-current-url", "")
         current_filter = "all"
-        for f in ("paired", "connected", "favorites", "ignored", "history"):
+        for f in ("paired", "connected", "favorites", "ignored"):
             if f"filter={f}" in current_url:
                 current_filter = f
                 break
@@ -1081,7 +1056,6 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
         if (
             (current_filter == "favorites" and not device.is_favorite)
             or (current_filter == "all" and not device.in_range)
-            or (current_filter == "history" and device.in_range)
         ):
             should_hide = True
         if should_hide:
@@ -1114,7 +1088,7 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
             return render_template("partials/ignored_button_detail.html", request, device=device)
         current_url = request.headers.get("hx-current-url", "")
         current_filter = "all"
-        for f in ("paired", "connected", "favorites", "ignored", "history"):
+        for f in ("paired", "connected", "favorites", "ignored"):
             if f"filter={f}" in current_url:
                 current_filter = f
                 break
@@ -1123,7 +1097,6 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
             (is_ignored and current_filter != "ignored")
             or (not is_ignored and current_filter == "ignored")
             or (current_filter == "all" and not device.in_range)
-            or (current_filter == "history" and device.in_range)
             or (
                 (current_filter == "paired" and not device.paired)
                 or (current_filter == "connected" and not device.connected)
@@ -1162,7 +1135,7 @@ def create_page_router(
     async def devices_page_factory(
         request: Request,
         filter: str = Query(
-            default="all", pattern="^(all|paired|connected|favorites|ignored|history)$"
+            default="all", pattern="^(all|paired|connected|favorites|ignored)$"
         ),
         sort: str = Query(default="last_seen", pattern="^(last_seen|name|last_connected)$"),
     ) -> object:
@@ -1201,7 +1174,6 @@ def create_page_router(
         favorite_count = 0
         ignored_count = 0
         in_range_count = 0
-        history_count = 0
         for stored in all_devices_for_counts:
             mac = str(stored["mac_address"])
             live = live_states.get(mac)
@@ -1217,8 +1189,6 @@ def create_page_router(
                 connected_count += 1
             if runtime.in_range:
                 in_range_count += 1
-            else:
-                history_count += 1
         devices: list[DeviceRuntimeState] = []
         for stored in stored_devices:
             mac = str(stored["mac_address"])
@@ -1230,8 +1200,6 @@ def create_page_router(
                 continue
             if filter == "all" and not runtime.in_range:
                 continue
-            if filter == "history" and runtime.in_range:
-                continue
             devices.append(runtime)
         return render_template(
             "devices.html",
@@ -1242,7 +1210,6 @@ def create_page_router(
             connected_count=connected_count,
             favorite_count=favorite_count,
             ignored_count=ignored_count,
-            history_count=history_count,
             current_filter=filter,
             current_sort=sort,
             is_scanning=bt.is_scanning if bt else False,

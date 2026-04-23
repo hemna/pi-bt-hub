@@ -29,13 +29,6 @@
           data-tooltip="Devices you've marked as favorites">
     Favorites ({{ favorite_count | default(0) }})
   </button>
-  <button class="filter-bar__btn {% if current_filter == 'history' %}filter-bar__btn--active{% endif %}"
-          hx-get="/devices?filter=history"
-          hx-target="body"
-          hx-push-url="true"
-          data-tooltip="Devices seen before but not currently in range">
-    History ({{ history_count | default(0) }})
-  </button>
   <button class="filter-bar__btn {% if current_filter == 'ignored' %}filter-bar__btn--active{% endif %}"
           hx-get="/devices?filter=ignored"
           hx-target="body"

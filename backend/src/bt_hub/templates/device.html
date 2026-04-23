@@ -226,9 +226,9 @@
        @keydown.escape.window="showDeleteModal = false"
        style="display: none;">
     <div class="modal" @click.outside="showDeleteModal = false">
-      <h3 class="modal__title">Delete Device from History</h3>
+      <h3 class="modal__title">Delete Device</h3>
       <div class="modal__body">
-        <p>Are you sure you want to delete <strong>{{ device.alias or device.name or device.mac_address }}</strong> from the device history?</p>
+        <p>Are you sure you want to delete <strong>{{ device.alias or device.name or device.mac_address }}</strong>?</p>
         <p class="mt-2">This will remove all stored information including alias, notes, and favorites status. This action cannot be undone.</p>
       </div>
       <div class="modal__actions">
