@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Pi BT Hub",
         description="Unified Bluetooth management and bridge web UI",
-        version="0.2.0",
+        version="1.0.0",
         lifespan=lifespan,
     )
 
