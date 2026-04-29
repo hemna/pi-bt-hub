@@ -105,6 +105,7 @@ class BlueZManager:
         self._bus: MessageBus | None = None
         self._is_scanning = False
         self._scan_task: asyncio.Task[None] | None = None
+        self._hcitool_task: asyncio.Task[None] | None = None
         self._signal_handlers: list[Any] = []
         self._bridge_was_running = False
 
@@ -698,10 +699,11 @@ class BlueZManager:
         # Run hcitool scan in parallel to find Classic BR/EDR devices.
         # BlueZ D-Bus StartDiscovery often fails to find Classic-only devices
         # even with Transport=auto/bredr on some firmware versions.
-        asyncio.create_task(self._hcitool_classic_scan(duration_seconds))
+        self._hcitool_task = asyncio.create_task(self._hcitool_classic_scan(duration_seconds))
 
-        # Schedule auto-stop
-        self._scan_task = asyncio.create_task(self._auto_stop_discovery(duration_seconds))
+        # Schedule auto-stop — uses a longer duration to allow hcitool to complete
+        # (hcitool scan takes ~10-12 seconds for a full inquiry cycle)
+        self._scan_task = asyncio.create_task(self._auto_stop_discovery(max(duration_seconds, 15)))
 
     async def _auto_stop_discovery(self, duration: int) -> None:
         """Wait and then stop discovery."""
@@ -740,6 +742,17 @@ class BlueZManager:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._scan_task
             self._scan_task = None
+
+        # Wait for hcitool classic scan to finish before restarting bridge
+        # (restarting bridge kills the inquiry scan)
+        if self._hcitool_task and not self._hcitool_task.done():
+            try:
+                await asyncio.wait_for(self._hcitool_task, timeout=15.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._hcitool_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._hcitool_task
+            self._hcitool_task = None
 
         try:
             await self._call_method(
