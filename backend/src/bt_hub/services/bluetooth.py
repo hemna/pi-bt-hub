@@ -478,6 +478,24 @@ class BlueZManager:
         if self._is_scanning:
             raise AlreadyScanningError()
 
+        # Set discovery filter to find BOTH BLE and Classic (BR/EDR) devices.
+        # Without this, BlueZ may default to BLE-only on some adapters,
+        # which means Classic devices like the Kenwood TH-D74 won't appear.
+        try:
+            await self._call_method(
+                path=self._adapter_path,
+                interface=ADAPTER_INTERFACE,
+                method="SetDiscoveryFilter",
+                signature="a{sv}",
+                body=[{"Transport": Variant("s", "auto")}],
+            )
+        except BluetoothError:
+            # Non-fatal: if filter fails, discovery still works (just BLE-only)
+            logger.warning(
+                "Failed to set discovery filter to 'auto' (BR/EDR + LE). "
+                "Classic Bluetooth devices may not appear in scan results."
+            )
+
         await self._call_method(
             path=self._adapter_path,
             interface=ADAPTER_INTERFACE,
