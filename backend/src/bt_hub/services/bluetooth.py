@@ -498,43 +498,46 @@ class BlueZManager:
             if proc.returncode != 0:
                 return False  # Not running, nothing to do
 
-            # Stop bt-bridge
+            # Stop bt-bridge — use kill + stop to be fast
             logger.info("Stopping bt-bridge to allow Classic BT discovery...")
+            # First send SIGTERM via kill (immediate, doesn't wait)
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "stop", "bt-bridge.service",
+                "sudo", systemctl, "kill", "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await asyncio.wait_for(proc.communicate(), timeout=15.0)
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
-            # Give BlueZ a moment to release BLE advertising
-            await asyncio.sleep(2.0)
-
-            if proc.returncode == 0:
-                logger.info("bt-bridge stopped for scan")
-                return True
+            # Now wait for it to actually die (poll is-active)
+            for _ in range(10):
+                await asyncio.sleep(0.5)
+                check = await asyncio.create_subprocess_exec(
+                    "sudo", systemctl, "is-active", "bt-bridge.service",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(check.communicate(), timeout=3.0)
+                if check.returncode != 0:
+                    # It's dead
+                    break
             else:
-                logger.warning("Failed to stop bt-bridge (exit %d)", proc.returncode)
-                return False
-
-        except asyncio.TimeoutError:
-            # Stop timed out — force kill
-            logger.warning("bt-bridge stop timed out, trying force kill...")
-            try:
+                # Still alive after 5s — force kill
+                logger.warning("bt-bridge didn't stop gracefully, sending SIGKILL")
                 proc = await asyncio.create_subprocess_exec(
                     "sudo", systemctl, "kill", "--signal=SIGKILL", "bt-bridge.service",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                await asyncio.sleep(2.0)
-                logger.info("bt-bridge force killed for scan")
-                return True
-            except Exception:
-                logger.warning("Force kill also failed", exc_info=True)
-                return False
+                await asyncio.sleep(1.0)
+
+            # Give BlueZ time to release the radio
+            await asyncio.sleep(1.0)
+            logger.info("bt-bridge stopped for scan")
+            return True
+
         except Exception:
-            logger.debug("Error stopping bt-bridge for scan", exc_info=True)
+            logger.warning("Error stopping bt-bridge for scan", exc_info=True)
             return False
 
     async def _restart_bridge_after_scan(self) -> None:
