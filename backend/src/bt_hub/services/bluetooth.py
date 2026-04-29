@@ -560,6 +560,75 @@ class BlueZManager:
         except Exception:
             logger.warning("Error restarting bt-bridge after scan", exc_info=True)
 
+    async def _hcitool_classic_scan(self, duration: int) -> None:
+        """Run hcitool scan to find Classic BR/EDR devices.
+
+        BlueZ D-Bus StartDiscovery often fails to discover Classic-only
+        devices (like the Kenwood TH-D74) even with Transport=auto.
+        hcitool scan uses the HCI inquiry command directly and reliably
+        finds Classic devices. We run it in parallel and emit
+        device_discovered events for any devices found.
+        """
+        import shutil
+
+        hcitool = shutil.which("hcitool") or "/usr/bin/hcitool"
+        try:
+            logger.info("Running hcitool scan for Classic BR/EDR devices...")
+            proc = await asyncio.create_subprocess_exec(
+                hcitool, "scan", "--flush",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=float(duration + 5)
+            )
+
+            if proc.returncode != 0:
+                logger.debug(
+                    "hcitool scan failed (exit %d): %s",
+                    proc.returncode,
+                    stderr.decode(errors="replace").strip(),
+                )
+                return
+
+            # Parse hcitool scan output:
+            # "Scanning ...\n\tAA:BB:CC:DD:EE:FF\tDevice Name\n"
+            output = stdout.decode(errors="replace")
+            for line in output.splitlines():
+                line = line.strip()
+                if not line or line.startswith("Scanning"):
+                    continue
+                parts = line.split("\t", 1)
+                if len(parts) >= 2:
+                    mac = parts[0].strip()
+                    name = parts[1].strip() if len(parts) > 1 else None
+                    logger.info(
+                        "Classic BR/EDR device found via hcitool: %s (%s)",
+                        mac,
+                        name or "unknown",
+                    )
+                    await self._event_bus.publish(
+                        Event(
+                            "device_discovered",
+                            {
+                                "mac_address": mac,
+                                "name": name,
+                                "alias": name,
+                                "rssi": None,
+                                "paired": False,
+                                "connected": False,
+                                "device_type": "other",
+                            },
+                        )
+                    )
+
+        except asyncio.TimeoutError:
+            logger.debug("hcitool scan timed out")
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.debug("hcitool classic scan failed", exc_info=True)
+
     async def start_discovery(self, duration_seconds: int = 10) -> None:
         """Start Bluetooth discovery, auto-stop after duration_seconds."""
         if self._is_scanning:
@@ -625,6 +694,11 @@ class BlueZManager:
                 )
         except Exception:
             logger.debug("Failed to emit cached devices at scan start", exc_info=True)
+
+        # Run hcitool scan in parallel to find Classic BR/EDR devices.
+        # BlueZ D-Bus StartDiscovery often fails to find Classic-only devices
+        # even with Transport=auto/bredr on some firmware versions.
+        asyncio.create_task(self._hcitool_classic_scan(duration_seconds))
 
         # Schedule auto-stop
         self._scan_task = asyncio.create_task(self._auto_stop_discovery(duration_seconds))
