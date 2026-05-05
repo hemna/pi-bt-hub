@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Optional
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.templating import Jinja2Templates  # noqa: TC002
@@ -83,9 +83,12 @@ async def start_scan(
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
     store: Annotated[DeviceStore, Depends(get_device_store)],
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
-    duration: int = 10,
+    duration: Optional[int] = None,
 ) -> object:
     """Start Bluetooth discovery scan."""
+    if duration is None:
+        settings = await store.get_settings()
+        duration = int(settings.get("scan_duration_seconds", 10))
     logger.info("Starting scan for %d seconds", duration)
     await bt.start_discovery(duration_seconds=duration)
 
@@ -241,13 +244,16 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
     @api.post("/api/scan/start")
     async def start_scan_factory(
         request: Request,
-        duration: int = 10,
+        duration: Optional[int] = None,
     ) -> object:
         assert container.services is not None
         bt = container.services.bluez_mgr
         store = container.services.device_store
         if bt is None:
             raise AdapterUnavailableError("BlueZManager not initialized")
+        if duration is None:
+            settings = await store.get_settings()
+            duration = int(settings.get("scan_duration_seconds", 10))
         logger.info("Starting scan for %d seconds", duration)
         await bt.start_discovery(duration_seconds=duration)
         try:
