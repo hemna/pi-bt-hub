@@ -5,8 +5,8 @@
           hx-get="/devices?filter=all"
           hx-target="body"
           hx-push-url="true"
-          data-tooltip="Devices currently in range">
-    All ({{ device_count | default(0) }})
+          data-tooltip="Devices currently in range (have signal or are connected)">
+    In Range ({{ device_count | default(0) }})
   </button>
   <button class="filter-bar__btn {% if current_filter == 'paired' %}filter-bar__btn--active{% endif %}"
           hx-get="/devices?filter=paired"
