@@ -83,9 +83,10 @@ class TestStartupServices:
         services = await startup_services(settings)
         try:
             assert services.device_store is not None
-            # Verify DB was initialized by doing a simple operation
-            result = await services.device_store.get_all_devices()
-            assert isinstance(result, list)
+            # Verify DB was initialized by doing a simple settings query
+            result = await services.device_store.get_settings()
+            assert isinstance(result, dict)
+            assert "theme" in result
         finally:
             await services.device_store.close()
 

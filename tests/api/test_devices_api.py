@@ -1,65 +1,73 @@
-"""API tests for device endpoints (T039, T048)."""
+"""API tests for device endpoints (live BlueZ only, no persistence)."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest_asyncio
-
 from bt_hub.api import (
     AlreadyPairedError,
+    DeviceNotFoundError,
     NotPairedError,
 )
 
 if TYPE_CHECKING:
     from httpx import AsyncClient
 
-    from bt_hub.services.device_store import DeviceStore
-
-
-@pytest_asyncio.fixture
-async def seeded_store(device_store: DeviceStore) -> DeviceStore:
-    """Seed the device store with test data."""
-    await device_store.upsert_device("AA:BB:CC:DD:EE:FF", name="Test Speaker", device_type="audio")
-    await device_store.upsert_device("11:22:33:44:55:66", name="Test Keyboard", device_type="input")
-    await device_store.upsert_device(
-        "77:88:99:AA:BB:CC", name="Favorite Phone", device_type="phone"
-    )
-    await device_store.update_device("77:88:99:AA:BB:CC", is_favorite=True)
-    return device_store
-
 
 class TestListDevices:
     """Tests for GET /api/devices."""
 
-    async def test_list_devices_returns_device_list(
+    async def test_list_devices_empty(
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
-        """GET /api/devices returns all devices."""
+        """GET /api/devices returns empty list when no devices discovered."""
+        mock_bluetooth_manager.get_all_device_states = AsyncMock(return_value={})
+
         response = await test_client.get("/api/devices")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["count"] == 3
-        assert len(data["devices"]) == 3
+        assert data["count"] == 0
+        assert data["devices"] == []
 
-    async def test_list_devices_filter_favorites(
+    async def test_list_devices_returns_discovered(
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
-        """GET /api/devices?filter=favorites returns only favorites."""
-        response = await test_client.get("/api/devices?filter=favorites")
+        """GET /api/devices returns devices from BlueZ."""
+        mock_bluetooth_manager.get_all_device_states = AsyncMock(
+            return_value={
+                "AA:BB:CC:DD:EE:FF": {
+                    "name": "Test Speaker",
+                    "paired": True,
+                    "connected": False,
+                    "trusted": False,
+                    "rssi": -55,
+                    "device_type": "audio",
+                },
+                "11:22:33:44:55:66": {
+                    "name": "Test Keyboard",
+                    "paired": False,
+                    "connected": False,
+                    "trusted": False,
+                    "rssi": -70,
+                    "device_type": "input",
+                },
+            }
+        )
+
+        response = await test_client.get("/api/devices")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["count"] == 1
-        assert data["devices"][0]["mac_address"] == "77:88:99:AA:BB:CC"
+        assert data["count"] == 2
+        macs = {d["mac_address"] for d in data["devices"]}
+        assert "AA:BB:CC:DD:EE:FF" in macs
+        assert "11:22:33:44:55:66" in macs
 
 
 class TestGetDevice:
@@ -69,91 +77,42 @@ class TestGetDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
-        """GET /api/devices/{mac} returns the device."""
+        """GET /api/devices/{mac} returns device from BlueZ."""
+        mock_bluetooth_manager.get_device_state = AsyncMock(
+            return_value={
+                "name": "Test Speaker",
+                "paired": True,
+                "connected": False,
+                "trusted": True,
+                "rssi": -45,
+                "device_type": "audio",
+            }
+        )
+
         response = await test_client.get("/api/devices/AA:BB:CC:DD:EE:FF")
 
         assert response.status_code == 200
         data = response.json()
         assert data["mac_address"] == "AA:BB:CC:DD:EE:FF"
         assert data["name"] == "Test Speaker"
+        assert data["paired"] is True
 
     async def test_get_device_returns_404_for_unknown(
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
-        """GET /api/devices/{mac} returns 404 for unknown device."""
+        """GET /api/devices/{mac} returns 404 when device not in BlueZ."""
+        mock_bluetooth_manager.get_device_state = AsyncMock(
+            side_effect=DeviceNotFoundError("FF:FF:FF:FF:FF:FF")
+        )
+
         response = await test_client.get("/api/devices/FF:FF:FF:FF:FF:FF")
 
         assert response.status_code == 404
         data = response.json()
         assert data["error"] == "device_not_found"
-
-
-class TestUpdateDevice:
-    """Tests for PATCH /api/devices/{mac}."""
-
-    async def test_update_alias(
-        self,
-        test_client: AsyncClient,
-        mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
-    ) -> None:
-        """PATCH /api/devices/{mac} updates alias."""
-        response = await test_client.patch(
-            "/api/devices/AA:BB:CC:DD:EE:FF",
-            json={"alias": "Living Room Speaker"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["alias"] == "Living Room Speaker"
-
-    async def test_update_alias_too_long_returns_422(
-        self,
-        test_client: AsyncClient,
-        mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
-    ) -> None:
-        """PATCH /api/devices/{mac} returns 422 for alias > 64 chars."""
-        response = await test_client.patch(
-            "/api/devices/AA:BB:CC:DD:EE:FF",
-            json={"alias": "x" * 65},
-        )
-
-        assert response.status_code == 422
-
-
-class TestDeleteDevice:
-    """Tests for DELETE /api/devices/{mac}."""
-
-    async def test_delete_device(
-        self,
-        test_client: AsyncClient,
-        mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
-    ) -> None:
-        """DELETE /api/devices/{mac} removes device."""
-        response = await test_client.delete("/api/devices/AA:BB:CC:DD:EE:FF")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "deleted"
-        assert data["mac_address"] == "AA:BB:CC:DD:EE:FF"
-
-    async def test_delete_device_returns_404_for_unknown(
-        self,
-        test_client: AsyncClient,
-        mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
-    ) -> None:
-        """DELETE /api/devices/{mac} returns 404 for unknown device."""
-        response = await test_client.delete("/api/devices/FF:FF:FF:FF:FF:FF")
-
-        assert response.status_code == 404
 
 
 class TestPairDevice:
@@ -163,7 +122,6 @@ class TestPairDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/pair returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/pair")
@@ -178,7 +136,6 @@ class TestPairDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/pair returns 409 when already paired."""
         mock_bluetooth_manager.pair_device = AsyncMock(side_effect=AlreadyPairedError())
@@ -197,7 +154,6 @@ class TestConnectDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/connect returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/connect")
@@ -211,7 +167,6 @@ class TestConnectDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/connect returns 412 when not paired."""
         mock_bluetooth_manager.connect_device = AsyncMock(side_effect=NotPairedError())
@@ -230,7 +185,6 @@ class TestDisconnectDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/disconnect returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/disconnect")
@@ -248,7 +202,6 @@ class TestTrustUntrust:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/trust returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/trust")
@@ -262,7 +215,6 @@ class TestTrustUntrust:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/untrust returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/untrust")
@@ -280,7 +232,6 @@ class TestRemoveDevice:
         self,
         test_client: AsyncClient,
         mock_bluetooth_manager: MagicMock,
-        seeded_store: DeviceStore,
     ) -> None:
         """POST /api/devices/{mac}/remove returns 200."""
         response = await test_client.post("/api/devices/AA:BB:CC:DD:EE:FF/remove")

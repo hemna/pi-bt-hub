@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -33,13 +31,7 @@ class ConnectionState(StrEnum):
 
 MAC_ADDRESS_PATTERN = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
 
-MacAddress = Annotated[
-    str,
-    Field(
-        description="Bluetooth MAC address in XX:XX:XX:XX:XX:XX format",
-        examples=["AA:BB:CC:DD:EE:FF"],
-    ),
-]
+MacAddress = str
 
 
 def validate_mac_address(value: str) -> str:
@@ -54,46 +46,23 @@ def validate_mac_address(value: str) -> str:
     return normalized
 
 
-class Device(BaseModel):
-    """Persisted Bluetooth device record stored in SQLite."""
+class DeviceRuntimeState(BaseModel):
+    """Live Bluetooth device state from BlueZ. No persistence."""
 
-    mac_address: MacAddress
+    mac_address: str
     name: str | None = None
-    alias: str | None = Field(default=None, min_length=1, max_length=64)
     device_type: DeviceType | None = None
-    first_seen: datetime
-    last_seen: datetime
-    last_connected: datetime | None = None
-    is_favorite: bool = False
-    is_ignored: bool = False
-    notes: str | None = Field(default=None, max_length=500)
+    paired: bool = False
+    connected: bool = False
+    trusted: bool = False
+    rssi: int | None = None
+    connection_state: ConnectionState = ConnectionState.DISCONNECTED
 
     @field_validator("mac_address")
     @classmethod
     def normalize_mac(cls, v: str) -> str:
         """Normalize MAC address to uppercase."""
         return validate_mac_address(v)
-
-
-class DeviceRuntimeState(Device):
-    """Device with live BlueZ state merged in. Not persisted."""
-
-    paired: bool = False
-    connected: bool = False
-    trusted: bool = False
-    rssi: int | None = None
-    connection_state: ConnectionState = ConnectionState.DISCONNECTED
-    in_range: bool = False
-    """True when the device is currently known to BlueZ (i.e. live data available)."""
-
-
-class DeviceUpdate(BaseModel):
-    """Partial update for user-editable device fields."""
-
-    alias: str | None = Field(default=None, min_length=1, max_length=64)
-    is_favorite: bool | None = None
-    is_ignored: bool | None = None
-    notes: str | None = Field(default=None, max_length=500)
 
 
 class AdapterState(BaseModel):

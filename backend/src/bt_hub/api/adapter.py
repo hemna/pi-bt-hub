@@ -56,12 +56,10 @@ async def set_adapter_power(
     powered: Annotated[bool | None, Form()] = None,
 ) -> object:
     """Toggle adapter power on or off."""
-    # Handle form data from HTMX (hx-vals sends form-encoded data)
     power_value: bool = False
     if powered is not None:
         power_value = powered
     else:
-        # Try to get from JSON body for API clients
         try:
             body = await request.json()
             power_value = bool(body.get("powered", False))
@@ -71,7 +69,6 @@ async def set_adapter_power(
     logger.info("Setting adapter power to %s", power_value)
     state = await bt.set_powered(power_value)
 
-    # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
         return render_template("partials/adapter_status.html", request, adapter=state)
     return state
@@ -92,19 +89,6 @@ async def start_scan(
     logger.info("Starting scan for %d seconds", duration)
     await bt.start_discovery(duration_seconds=duration)
 
-    # Upsert all BlueZ-known devices into the store immediately so they
-    # persist even after StopDiscovery removes transient devices.
-    try:
-        live_states = await bt.get_all_device_states()
-        for mac, props in live_states.items():
-            await store.upsert_device(
-                mac,
-                name=props.get("name"),
-                device_type=props.get("device_type"),
-            )
-    except Exception:
-        logger.debug("Failed to upsert devices at scan start", exc_info=True)
-
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
         return render_template("partials/scan_progress.html", request, duration=duration)
@@ -121,7 +105,6 @@ async def stop_scan(
     logger.info("Stopping scan")
     await bt.stop_discovery()
 
-    # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
         return render_template("partials/scan_stopped.html", request)
     return ScanResponse(status="stopped")
@@ -134,7 +117,6 @@ async def stop_scan(
 async def index_page(
     request: Request,
     bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-    store: Annotated[DeviceStore, Depends(get_device_store)],
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
     bridge_client: Annotated[BtBridgeClient, Depends(get_bt_bridge_client)],
 ) -> object:
@@ -144,56 +126,35 @@ async def index_page(
     except Exception:
         adapter = None
 
-    # Probe BT Bridge if enabled (graceful fallback)
+    # Probe BT Bridge if enabled
     bridge_status = None
     service_status = None
     settings = get_settings()
     if settings.bridge_enabled:
         bridge_status = await bridge_client.get_status()
-        # Get systemd service status
         try:
             bridge_service = get_bridge_service()
             service_status = await bridge_service.status()
         except Exception:
-            pass  # Service not available
+            pass
 
-    # Get device counts (exclude ignored from main count)
-    all_devices = await store.get_all_devices(include_ignored=True)
-    devices = [d for d in all_devices if not d.get("is_ignored", False)]
-
-    # Get live states to count paired/connected
+    # Get live device counts directly from BlueZ
     try:
         live_states = await bt.get_all_device_states()
     except Exception:
         live_states = {}
 
-    paired_count = 0
-    connected_count = 0
-    favorite_count = 0
-    ignored_count = 0
-
-    for d in all_devices:
-        mac = str(d["mac_address"])
-        live = live_states.get(mac, {})
-        if d.get("is_ignored", False):
-            ignored_count += 1
-            continue  # Don't count ignored devices in other stats
-        if live.get("paired", False):
-            paired_count += 1
-        if live.get("connected", False):
-            connected_count += 1
-        if d.get("is_favorite", False):
-            favorite_count += 1
+    device_count = len(live_states)
+    paired_count = sum(1 for d in live_states.values() if d.get("paired", False))
+    connected_count = sum(1 for d in live_states.values() if d.get("connected", False))
 
     return render_template(
         "index.html",
         request,
         adapter=adapter,
-        device_count=len(devices),
+        device_count=device_count,
         paired_count=paired_count,
         connected_count=connected_count,
-        favorite_count=favorite_count,
-        ignored_count=ignored_count,
         bridge_status=bridge_status,
         bridge_enabled=settings.bridge_enabled,
         service_status=service_status,
@@ -256,16 +217,6 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
             duration = int(settings.get("scan_duration_seconds", 10))
         logger.info("Starting scan for %d seconds", duration)
         await bt.start_discovery(duration_seconds=duration)
-        try:
-            live_states = await bt.get_all_device_states()
-            for mac, props in live_states.items():
-                await store.upsert_device(
-                    mac,
-                    name=props.get("name"),
-                    device_type=props.get("device_type"),
-                )
-        except Exception:
-            logger.debug("Failed to upsert devices at scan start", exc_info=True)
         if "hx-request" in request.headers:
             return render_template("partials/scan_progress.html", request, duration=duration)
         return ScanResponse(status="scanning", duration_seconds=duration)
@@ -297,7 +248,6 @@ def create_page_router(
     async def index_page_factory(request: Request) -> object:
         assert container.services is not None
         bt = container.services.bluez_mgr
-        store = container.services.device_store
 
         try:
             adapter = await bt.get_adapter_state() if bt else None
@@ -313,41 +263,23 @@ def create_page_router(
                 with contextlib.suppress(Exception):
                     service_status = await container.services.systemd_service.status()
 
-        all_devices = await store.get_all_devices(include_ignored=True)
-        devices = [d for d in all_devices if not d.get("is_ignored", False)]
-
+        # Get live device counts directly from BlueZ
         try:
             live_states = await bt.get_all_device_states() if bt else {}
         except Exception:
             live_states = {}
 
-        paired_count = 0
-        connected_count = 0
-        favorite_count = 0
-        ignored_count = 0
-
-        for d in all_devices:
-            mac = str(d["mac_address"])
-            live = live_states.get(mac, {})
-            if d.get("is_ignored", False):
-                ignored_count += 1
-                continue
-            if live.get("paired", False):
-                paired_count += 1
-            if live.get("connected", False):
-                connected_count += 1
-            if d.get("is_favorite", False):
-                favorite_count += 1
+        device_count = len(live_states)
+        paired_count = sum(1 for d in live_states.values() if d.get("paired", False))
+        connected_count = sum(1 for d in live_states.values() if d.get("connected", False))
 
         return render_template(
             "index.html",
             request,
             adapter=adapter,
-            device_count=len(devices),
+            device_count=device_count,
             paired_count=paired_count,
             connected_count=connected_count,
-            favorite_count=favorite_count,
-            ignored_count=ignored_count,
             bridge_status=bridge_status,
             bridge_enabled=settings.bridge_enabled,
             service_status=service_status,

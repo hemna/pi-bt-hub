@@ -259,7 +259,7 @@ Cloning bt-bridge repository...
 <div class="stat-grid mb-4">
   <div class="stat-card">
     <div class="stat-card__value">{{ device_count | default(0) }}</div>
-    <div class="stat-card__label">Total Devices</div>
+    <div class="stat-card__label">Discovered</div>
   </div>
   <div class="stat-card">
     <div class="stat-card__value">{{ paired_count | default(0) }}</div>
@@ -268,10 +268,6 @@ Cloning bt-bridge repository...
   <div class="stat-card">
     <div class="stat-card__value">{{ connected_count | default(0) }}</div>
     <div class="stat-card__label">Connected</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__value">{{ favorite_count | default(0) }}</div>
-    <div class="stat-card__label">Favorites</div>
   </div>
 </div>
 
@@ -287,9 +283,6 @@ Cloning bt-bridge repository...
     <div class="action-group">
       <a href="/devices" class="btn btn--primary">
         Scan & Manage Devices
-      </a>
-      <a href="/devices?filter=favorites" class="btn btn--secondary">
-        View Favorites
       </a>
     </div>
   </div>
