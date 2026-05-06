@@ -4,6 +4,7 @@
      x-data="{
        devices: [],
        scanning: true,
+       started: false,
        countdown: {{ duration | default(10) }},
        init() {
           // Periodically fetch devices during scan to catch discoveries
@@ -12,25 +13,16 @@
             if (this.scanning) this._fetchDevices();
           }, 3000);
 
-          // Countdown timer (visual only — actual stop comes from server via WebSocket)
-          this._timer = setInterval(() => {
-            if (this.countdown > 0) {
-              this.countdown--;
-            } else {
-              clearInterval(this._timer);
-            }
-          }, 1000);
-
-          // Fallback: if no scan_stopped event within duration + generous buffer,
+          // Fallback: if no scan_stopped event within a generous timeout,
           // mark as complete. The background task may take extra time due to
           // bridge stop and hcitool classic scan.
           setTimeout(() => {
             if (this.scanning) {
               this.scanning = false;
-              clearInterval(this._timer);
+              this.started = false;
+              if (this._timer) clearInterval(this._timer);
               if (this._pollTimer) clearInterval(this._pollTimer);
               window.dispatchEvent(new CustomEvent('scan-stopped'));
-              // Delayed fetch — give BlueZ a moment after stop
               setTimeout(() => this._fetchDevices(), 1000);
             }
           }, {{ (duration | default(10)) * 1000 + 15000 }});
@@ -65,7 +57,20 @@
         }
      }"
       @bt-ws-message.window="
-        if ($event.detail.type === 'device_discovered') {
+        if ($event.detail.type === 'scan_started') {
+          // BlueZ actually started — begin the countdown now
+          if (!started) {
+            started = true;
+            countdown = $event.detail.duration_seconds || {{ duration | default(10) }};
+            this._timer = setInterval(() => {
+              if (countdown > 0) {
+                countdown--;
+              } else {
+                clearInterval(this._timer);
+              }
+            }, 1000);
+          }
+        } else if ($event.detail.type === 'device_discovered') {
           const d = $event.detail;
           const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
           if (idx === -1) {
@@ -114,7 +119,8 @@
       <span style="color: var(--green);">&#10003;</span>
     </template>
     <strong>
-      <span x-show="scanning" x-text="'Scanning... ' + countdown + 's remaining'"></span>
+      <span x-show="scanning && !started">Starting scan...</span>
+      <span x-show="scanning && started" x-text="'Scanning... ' + countdown + 's remaining'"></span>
       <span x-show="!scanning">Scan complete</span>
     </strong>
     <span class="text-secondary" style="margin-left: auto;" x-text="devices.length + ' device(s) found'"></span>
