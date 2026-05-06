@@ -6,10 +6,11 @@
        scanning: true,
        countdown: {{ duration | default(10) }},
        init() {
-          // Fetch devices after a brief delay to let BlueZ start discovering.
-          // Also re-fetch at the end of the scan to catch everything.
+          // Periodically fetch devices during scan to catch discoveries
           this._fetchDevices();
-          setTimeout(() => this._fetchDevices(), 2000);
+          this._pollTimer = setInterval(() => {
+            if (this.scanning) this._fetchDevices();
+          }, 3000);
 
           // Countdown timer
           this._timer = setInterval(() => {
@@ -25,8 +26,8 @@
             if (this.scanning) {
               this.scanning = false;
               clearInterval(this._timer);
+              if (this._pollTimer) clearInterval(this._pollTimer);
               window.dispatchEvent(new CustomEvent('scan-stopped'));
-              // Final fetch to catch everything
               this._fetchDevices();
             }
           }, {{ (duration | default(10)) * 1000 + 3000 }});
@@ -80,17 +81,20 @@
           }
         } else if ($event.detail.type === 'device_updated') {
           const d = $event.detail;
-          const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
+          const mac = d.mac_address;
+          const props = d.properties || d;
+          const idx = devices.findIndex(dev => dev.mac_address === mac);
           if (idx !== -1) {
-            if (d.rssi) devices[idx].rssi = d.rssi;
-            if (d.name) devices[idx].name = d.name;
-            if (d.connected !== undefined) devices[idx].connected = d.connected;
-            if (d.paired !== undefined) devices[idx].paired = d.paired;
+            if (props.rssi || props.RSSI) devices[idx].rssi = props.rssi || props.RSSI;
+            if (props.name || props.Name) devices[idx].name = props.name || props.Name;
+            if (props.connected !== undefined || props.Connected !== undefined) devices[idx].connected = props.connected ?? props.Connected;
+            if (props.paired !== undefined || props.Paired !== undefined) devices[idx].paired = props.paired ?? props.Paired;
           }
         } else if ($event.detail.type === 'scan_stopped') {
           scanning = false;
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
+          if (this._pollTimer) clearInterval(this._pollTimer);
           window.dispatchEvent(new CustomEvent('scan-stopped'));
           // Final fetch to get all devices discovered during scan
           this._fetchDevices();
