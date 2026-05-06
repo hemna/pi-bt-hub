@@ -12,7 +12,7 @@
             if (this.scanning) this._fetchDevices();
           }, 3000);
 
-          // Countdown timer
+          // Countdown timer (visual only — actual stop comes from server via WebSocket)
           this._timer = setInterval(() => {
             if (this.countdown > 0) {
               this.countdown--;
@@ -21,16 +21,19 @@
             }
           }, 1000);
 
-          // Fallback: mark scan as complete after duration + buffer
+          // Fallback: if no scan_stopped event within duration + generous buffer,
+          // mark as complete. The background task may take extra time due to
+          // bridge stop and hcitool classic scan.
           setTimeout(() => {
             if (this.scanning) {
               this.scanning = false;
               clearInterval(this._timer);
               if (this._pollTimer) clearInterval(this._pollTimer);
               window.dispatchEvent(new CustomEvent('scan-stopped'));
-              this._fetchDevices();
+              // Delayed fetch — give BlueZ a moment after stop
+              setTimeout(() => this._fetchDevices(), 1000);
             }
-          }, {{ (duration | default(10)) * 1000 + 3000 }});
+          }, {{ (duration | default(10)) * 1000 + 15000 }});
         },
         _fetchDevices() {
           fetch('/api/devices')
@@ -96,8 +99,9 @@
           if (this._timer) clearInterval(this._timer);
           if (this._pollTimer) clearInterval(this._pollTimer);
           window.dispatchEvent(new CustomEvent('scan-stopped'));
-          // Final fetch to get all devices discovered during scan
+          // Fetch immediately (before BlueZ evicts) and again after a moment
           this._fetchDevices();
+          setTimeout(() => this._fetchDevices(), 1500);
         }
       ">
 
