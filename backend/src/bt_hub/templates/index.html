@@ -236,7 +236,7 @@
 
   <div class="filter-bar">
     <div class="filter-bar__group">
-      <span style="font-size: 0.875rem; color: var(--text-secondary);">
+      <span id="device-count-label" style="font-size: 0.875rem; color: var(--text-secondary);">
         {{ device_count | default(0) }} device{{ 's' if device_count != 1 else '' }} discovered
       </span>
     </div>

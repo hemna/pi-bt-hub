@@ -3,45 +3,25 @@
 <div class="scan-progress"
      x-data="{
        devices: [],
-       ignoredMacs: new Set(),
        scanning: true,
        countdown: {{ duration | default(10) }},
        init() {
-          // Fetch devices BlueZ already knows about that have RSSI (actively seen)
+          // Fetch devices BlueZ already knows about
           fetch('/api/devices')
             .then(r => r.json())
             .then(data => {
               if (data.devices) {
                 data.devices.forEach(d => {
-                  // Track ignored MACs so we can filter WebSocket events
-                  if (d.is_ignored) {
-                    this.ignoredMacs.add(d.mac_address);
-                  }
-                  // Only add devices that have RSSI (actively being seen) and are NOT ignored
-                  if (d.rssi && !d.is_ignored && !this.devices.find(dev => dev.mac_address === d.mac_address)) {
+                  if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
                     this.devices.push({
                       mac_address: d.mac_address,
-                      name: d.alias || d.name || d.mac_address,
+                      name: d.name || d.mac_address,
                       rssi: d.rssi,
                       paired: d.paired || false,
                       connected: d.connected || false,
-                      device_type: d.device_type || null,
-                      is_favorite: d.is_favorite || false,
-                      is_ignored: false
+                      device_type: d.device_type || null
                     });
                   }
-                });
-              }
-            })
-            .catch(() => {});
-
-          // Also fetch ignored devices specifically to populate ignoredMacs
-          fetch('/api/devices?filter=ignored')
-            .then(r => r.json())
-            .then(data => {
-              if (data.devices) {
-                data.devices.forEach(d => {
-                  this.ignoredMacs.add(d.mac_address);
                 });
               }
             })
@@ -56,13 +36,11 @@
             }
           }, 1000);
 
-          // Fallback: mark scan as complete after duration + buffer,
-          // in case the WebSocket scan_stopped event is missed.
+          // Fallback: mark scan as complete after duration + buffer
           setTimeout(() => {
             if (this.scanning) {
               this.scanning = false;
               clearInterval(this._timer);
-              // Dispatch custom event so the button updates
               window.dispatchEvent(new CustomEvent('scan-stopped'));
             }
           }, {{ (duration | default(10)) * 1000 + 3000 }});
@@ -71,30 +49,26 @@
       @bt-ws-message.window="
         if ($event.detail.type === 'device_discovered') {
           const d = $event.detail;
-          // Only show devices with RSSI (actively being seen) and NOT ignored
-          if (!d.rssi) return;
-          if (ignoredMacs.has(d.mac_address)) return;
           const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
           if (idx === -1) {
            devices.unshift({
               mac_address: d.mac_address,
-              name: d.name || d.alias || d.mac_address,
+              name: d.name || d.mac_address,
               rssi: d.rssi,
               paired: d.paired || false,
               connected: d.connected || false,
-              device_type: d.device_type || null,
-              is_favorite: d.is_favorite || false,
-              is_ignored: false
+              device_type: d.device_type || null
             });
           } else {
             // Update RSSI for already-seen device
-            devices[idx].rssi = d.rssi;
+            if (d.rssi) devices[idx].rssi = d.rssi;
+            if (d.name) devices[idx].name = d.name;
           }
         } else if ($event.detail.type === 'device_updated') {
           const d = $event.detail;
           const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
-          if (idx !== -1 && d.rssi) {
-            devices[idx].rssi = d.rssi;
+          if (idx !== -1) {
+            if (d.rssi) devices[idx].rssi = d.rssi;
             if (d.name) devices[idx].name = d.name;
             if (d.connected !== undefined) devices[idx].connected = d.connected;
             if (d.paired !== undefined) devices[idx].paired = d.paired;
@@ -103,7 +77,6 @@
           scanning = false;
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
-          // Dispatch custom event so the button updates
           window.dispatchEvent(new CustomEvent('scan-stopped'));
         }
       ">
@@ -163,43 +136,8 @@
               </template>
             </div>
           </div>
-
-          <div class="device-card__actions">
-            <button class="favorite-btn"
-                    :class="{ 'favorite-btn--active': device.is_favorite }"
-                    :data-tooltip="device.is_favorite ? 'Remove from favorites' : 'Add to favorites'"
-                    @click="
-                      const newVal = !device.is_favorite;
-                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/favorite', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: 'is_favorite=' + newVal
-                      }).then(r => { if (r.ok) device.is_favorite = newVal; });
-                    ">
-              <span x-text="device.is_favorite ? '★' : '☆'"></span>
-            </button>
-            <button class="ignore-btn"
-                    :data-tooltip="'Ignore this device'"
-                    @click="
-                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/ignore', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: 'is_ignored=true'
-                      }).then(r => {
-                        if (r.ok) {
-                          // Add to ignored set and remove from visible list
-                          ignoredMacs.add(device.mac_address);
-                          const idx = devices.findIndex(d => d.mac_address === device.mac_address);
-                          if (idx !== -1) devices.splice(idx, 1);
-                        }
-                      });
-                    ">
-              <span>👀</span>
-            </button>
-          </div>
         </div>
         <div class="device-card__bottom">
-          <span class="device-card__time" x-text="'Just now'"></span>
           <div class="flex gap-1">
             <a :href="'/devices/' + device.mac_address" class="btn btn--secondary btn--sm">Details</a>
             <template x-if="device.paired && !device.connected">
