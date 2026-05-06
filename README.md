@@ -6,9 +6,9 @@ A web-based Bluetooth management interface for Raspberry Pi, with optional integ
 
 ## Features
 
-- **Device Management**: Scan, discover, and manage Bluetooth devices
-- **Favorites**: Mark devices as favorites for quick access
-- **Ignore List**: Hide unwanted devices from scan results
+- **Device Management**: Scan, discover, pair, connect, and manage Bluetooth devices
+- **Single-page UI**: Adapter status, scan controls, and device list all on one page
+- **Live Discovery**: Shows only what BlueZ currently sees — no stale history
 - **Signal Strength**: Real-time RSSI signal meter with color-coded bars
 - **Bridge Integration**: Optional integration with bt-bridge daemon for BLE-to-Classic bridging
 - **TCP KISS Server**: Configurable TCP KISS server port to avoid conflicts with direwolf
@@ -352,17 +352,16 @@ Access the web interface at `http://<pi-address>:8080` (or port 80 if configured
 
 ### Pages
 
-- **Dashboard** (`/`): Overview with quick actions and bridge status
-- **Devices** (`/devices`): Scan, pair, and manage Bluetooth devices with favorites, ignore list, and signal strength display
+- **Home** (`/`): Adapter status, scan controls, and live device list — all in one place
 - **Bridge** (`/bridge`): Bridge status and TNC connection management (when enabled)
-- **TNC Devices** (`/bridge/tnc`): Manage TNC device history (when enabled)
+- **TNC Devices** (`/bridge/tnc`): Manage TNC devices (when enabled)
 - **Settings** (`/settings`): Configure app and bridge settings
 - **Logs** (`/logs`): View application logs
 
 ### Screenshots
 
 #### Devices
-Scan for nearby Bluetooth devices, pair, connect, and mark favorites.
+Scan for nearby Bluetooth devices, pair, and connect.
 
 ![Devices](docs/images/devices.png)
 
