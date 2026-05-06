@@ -6,26 +6,10 @@
        scanning: true,
        countdown: {{ duration | default(10) }},
        init() {
-          // Fetch devices BlueZ already knows about
-          fetch('/api/devices')
-            .then(r => r.json())
-            .then(data => {
-              if (data.devices) {
-                data.devices.forEach(d => {
-                  if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
-                    this.devices.push({
-                      mac_address: d.mac_address,
-                      name: d.name || d.mac_address,
-                      rssi: d.rssi,
-                      paired: d.paired || false,
-                      connected: d.connected || false,
-                      device_type: d.device_type || null
-                    });
-                  }
-                });
-              }
-            })
-            .catch(() => {});
+          // Fetch devices after a brief delay to let BlueZ start discovering.
+          // Also re-fetch at the end of the scan to catch everything.
+          this._fetchDevices();
+          setTimeout(() => this._fetchDevices(), 2000);
 
           // Countdown timer
           this._timer = setInterval(() => {
@@ -42,8 +26,38 @@
               this.scanning = false;
               clearInterval(this._timer);
               window.dispatchEvent(new CustomEvent('scan-stopped'));
+              // Final fetch to catch everything
+              this._fetchDevices();
             }
           }, {{ (duration | default(10)) * 1000 + 3000 }});
+        },
+        _fetchDevices() {
+          fetch('/api/devices')
+            .then(r => r.json())
+            .then(data => {
+              if (data.devices) {
+                data.devices.forEach(d => {
+                  if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
+                    this.devices.push({
+                      mac_address: d.mac_address,
+                      name: d.name || d.mac_address,
+                      rssi: d.rssi,
+                      paired: d.paired || false,
+                      connected: d.connected || false,
+                      device_type: d.device_type || null
+                    });
+                  } else {
+                    // Update existing device
+                    const idx = this.devices.findIndex(dev => dev.mac_address === d.mac_address);
+                    if (d.rssi) this.devices[idx].rssi = d.rssi;
+                    if (d.name) this.devices[idx].name = d.name;
+                    if (d.connected !== undefined) this.devices[idx].connected = d.connected;
+                    if (d.paired !== undefined) this.devices[idx].paired = d.paired;
+                  }
+                });
+              }
+            })
+            .catch(() => {});
         }
      }"
       @bt-ws-message.window="
@@ -78,6 +92,8 @@
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
           window.dispatchEvent(new CustomEvent('scan-stopped'));
+          // Final fetch to get all devices discovered during scan
+          this._fetchDevices();
         }
       ">
 
