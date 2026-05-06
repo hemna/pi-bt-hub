@@ -134,6 +134,59 @@
 </div>
 {% endif %}
 
+<!-- Direwolf Connection -->
+{% if status.direwolf and status.direwolf.enabled %}
+<div class="card mt-4" id="direwolf-card">
+    <div class="card__header">
+        <h3>Direwolf ({{ status.direwolf.mode | upper }})</h3>
+        {% if status.direwolf.state == 'connected' or status.direwolf.state == 'registered' %}
+        <span class="badge badge--connected" id="direwolf-badge">{{ status.direwolf.state | capitalize }}</span>
+        {% elif status.direwolf.state == 'connecting' %}
+        <span class="badge badge--scanning" id="direwolf-badge">Connecting</span>
+        {% else %}
+        <span class="badge badge--disconnected" id="direwolf-badge">{{ status.direwolf.state | capitalize }}</span>
+        {% endif %}
+    </div>
+    <div class="card__body">
+        <dl class="info-grid">
+            <dt>Target</dt>
+            <dd><code>{{ status.direwolf.host }}:{{ status.direwolf.port }}</code></dd>
+            {% if status.direwolf.mode == 'agw' and status.direwolf.callsign %}
+            <dt>Callsign</dt>
+            <dd><code>{{ status.direwolf.callsign }}</code></dd>
+            {% endif %}
+            {% if status.direwolf.connected_at %}
+            <dt>Connected</dt>
+            <dd>{{ status.direwolf.connected_at }}</dd>
+            {% endif %}
+            <dt>Frames TX / RX</dt>
+            <dd>{{ status.direwolf.frames_tx or 0 }} / {{ status.direwolf.frames_rx or 0 }}</dd>
+            <dt>Bytes TX / RX</dt>
+            <dd>{{ status.direwolf.bytes_tx or 0 }} / {{ status.direwolf.bytes_rx or 0 }}</dd>
+            {% if status.direwolf.reconnect_attempts and status.direwolf.reconnect_attempts > 0 %}
+            <dt>Reconnect Attempts</dt>
+            <dd>{{ status.direwolf.reconnect_attempts }}</dd>
+            {% endif %}
+            {% if status.direwolf.last_error %}
+            <dt>Last Error</dt>
+            <dd style="color: var(--danger);">{{ status.direwolf.last_error }}</dd>
+            {% endif %}
+        </dl>
+        {% if status.direwolf.mode == 'agw' and status.direwolf.active_connections %}
+        <div style="margin-top: 0.75rem;">
+            <strong style="font-size: 0.8125rem;">Active AX.25 Connections:</strong>
+            {% for conn in status.direwolf.active_connections %}
+            <div style="font-size: 0.8125rem; padding: 0.375rem 0; border-top: 1px solid var(--border);">
+                <code>{{ conn.call_from }}</code> &harr; <code>{{ conn.call_to }}</code>
+                <span class="badge badge--{{ 'connected' if conn.state == 'connected' else 'scanning' }}" style="margin-left: 0.5rem;">{{ conn.state }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Bridge Info -->
 <div class="card mt-4">
     <div class="card__header"><h3>Bridge Info</h3></div>

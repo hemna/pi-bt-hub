@@ -1,4 +1,4 @@
-"""Unit tests for Device, DeviceRuntimeState, and AdapterState models."""
+"""Unit tests for DeviceRuntimeState and AdapterState models."""
 
 from __future__ import annotations
 
@@ -7,10 +7,8 @@ import pytest
 from bt_hub.models.device import (
     AdapterState,
     ConnectionState,
-    Device,
     DeviceRuntimeState,
     DeviceType,
-    DeviceUpdate,
     validate_mac_address,
 )
 
@@ -76,101 +74,11 @@ class TestConnectionState:
         assert actual == expected
 
 
-class TestDevice:
-    """Tests for Device model creation and validation."""
-
-    def test_create_device_with_all_fields(self) -> None:
-        device = Device(
-            mac_address="AA:BB:CC:DD:EE:FF",
-            name="Test Speaker",
-            alias="Living Room",
-            device_type=DeviceType.AUDIO,
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-            last_connected="2026-03-10T14:25:00+00:00",
-            is_favorite=True,
-            notes="Great sound quality",
-        )
-        assert device.mac_address == "AA:BB:CC:DD:EE:FF"
-        assert device.name == "Test Speaker"
-        assert device.alias == "Living Room"
-        assert device.device_type == DeviceType.AUDIO
-        assert device.is_favorite is True
-
-    def test_create_device_minimal_fields(self) -> None:
-        device = Device(
-            mac_address="AA:BB:CC:DD:EE:FF",
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-        )
-        assert device.name is None
-        assert device.alias is None
-        assert device.device_type is None
-        assert device.is_favorite is False
-        assert device.notes is None
-
-    def test_device_normalizes_mac_to_uppercase(self) -> None:
-        device = Device(
-            mac_address="aa:bb:cc:dd:ee:ff",
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-        )
-        assert device.mac_address == "AA:BB:CC:DD:EE:FF"
-
-    def test_device_rejects_invalid_mac(self) -> None:
-        with pytest.raises(ValueError):
-            Device(
-                mac_address="invalid",
-                first_seen="2026-03-01T10:00:00+00:00",
-                last_seen="2026-03-10T14:30:00+00:00",
-            )
-
-    def test_device_alias_max_length(self) -> None:
-        device = Device(
-            mac_address="AA:BB:CC:DD:EE:FF",
-            alias="x" * 64,
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-        )
-        assert len(device.alias) == 64  # type: ignore[arg-type]
-
-    def test_device_alias_too_long(self) -> None:
-        with pytest.raises(ValueError):
-            Device(
-                mac_address="AA:BB:CC:DD:EE:FF",
-                alias="x" * 65,
-                first_seen="2026-03-01T10:00:00+00:00",
-                last_seen="2026-03-10T14:30:00+00:00",
-            )
-
-    def test_device_notes_max_length(self) -> None:
-        device = Device(
-            mac_address="AA:BB:CC:DD:EE:FF",
-            notes="x" * 500,
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-        )
-        assert len(device.notes) == 500  # type: ignore[arg-type]
-
-    def test_device_notes_too_long(self) -> None:
-        with pytest.raises(ValueError):
-            Device(
-                mac_address="AA:BB:CC:DD:EE:FF",
-                notes="x" * 501,
-                first_seen="2026-03-01T10:00:00+00:00",
-                last_seen="2026-03-10T14:30:00+00:00",
-            )
-
-
 class TestDeviceRuntimeState:
-    """Tests for DeviceRuntimeState model merging persisted and live state."""
+    """Tests for DeviceRuntimeState model (live BlueZ state)."""
 
     def test_runtime_state_defaults(self) -> None:
-        state = DeviceRuntimeState(
-            mac_address="AA:BB:CC:DD:EE:FF",
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
-        )
+        state = DeviceRuntimeState(mac_address="AA:BB:CC:DD:EE:FF")
         assert state.paired is False
         assert state.connected is False
         assert state.trusted is False
@@ -181,8 +89,6 @@ class TestDeviceRuntimeState:
         state = DeviceRuntimeState(
             mac_address="AA:BB:CC:DD:EE:FF",
             name="Speaker",
-            first_seen="2026-03-01T10:00:00+00:00",
-            last_seen="2026-03-10T14:30:00+00:00",
             paired=True,
             connected=True,
             trusted=True,
@@ -193,6 +99,14 @@ class TestDeviceRuntimeState:
         assert state.connected is True
         assert state.rssi == -45
         assert state.connection_state == ConnectionState.CONNECTED
+
+    def test_runtime_state_normalizes_mac(self) -> None:
+        state = DeviceRuntimeState(mac_address="aa:bb:cc:dd:ee:ff")
+        assert state.mac_address == "AA:BB:CC:DD:EE:FF"
+
+    def test_runtime_state_rejects_invalid_mac(self) -> None:
+        with pytest.raises(ValueError):
+            DeviceRuntimeState(mac_address="invalid")
 
 
 class TestAdapterState:
@@ -210,19 +124,3 @@ class TestAdapterState:
         assert adapter.name == "hci0"
         assert adapter.powered is True
         assert adapter.discovering is False
-
-
-class TestDeviceUpdate:
-    """Tests for DeviceUpdate partial update model."""
-
-    def test_all_fields_none_by_default(self) -> None:
-        update = DeviceUpdate()
-        assert update.alias is None
-        assert update.is_favorite is None
-        assert update.notes is None
-
-    def test_partial_update(self) -> None:
-        update = DeviceUpdate(alias="New Name", is_favorite=True)
-        assert update.alias == "New Name"
-        assert update.is_favorite is True
-        assert update.notes is None

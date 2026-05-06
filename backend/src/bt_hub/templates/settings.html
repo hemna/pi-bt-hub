@@ -135,6 +135,15 @@
 <div x-data="{
         tcpKissPort: 8001,
         originalPort: 8001,
+        direwolfEnabled: false,
+        direwolfMode: 'kiss',
+        direwolfHost: 'localhost',
+        direwolfKissPort: 8001,
+        direwolfAgwPort: 8000,
+        direwolfAgwCallsign: '',
+        direwolfAgwMonitor: true,
+        direwolfReconnect: true,
+        originalDirewolf: {},
         loading: true,
         saving: false,
         offline: false,
@@ -148,6 +157,24 @@
               } else {
                 this.tcpKissPort = data.tcp_kiss_port || 8001;
                 this.originalPort = this.tcpKissPort;
+                this.direwolfEnabled = data.direwolf_enabled || false;
+                this.direwolfMode = data.direwolf_mode || 'kiss';
+                this.direwolfHost = data.direwolf_host || 'localhost';
+                this.direwolfKissPort = data.direwolf_kiss_port || 8001;
+                this.direwolfAgwPort = data.direwolf_agw_port || 8000;
+                this.direwolfAgwCallsign = data.direwolf_agw_callsign || '';
+                this.direwolfAgwMonitor = data.direwolf_agw_monitor !== false;
+                this.direwolfReconnect = data.direwolf_reconnect !== false;
+                this.originalDirewolf = {
+                  enabled: this.direwolfEnabled,
+                  mode: this.direwolfMode,
+                  host: this.direwolfHost,
+                  kissPort: this.direwolfKissPort,
+                  agwPort: this.direwolfAgwPort,
+                  agwCallsign: this.direwolfAgwCallsign,
+                  agwMonitor: this.direwolfAgwMonitor,
+                  reconnect: this.direwolfReconnect,
+                };
               }
             }
           } catch (err) {
@@ -157,12 +184,21 @@
           }
         },
         get hasChanges() {
-          return this.tcpKissPort !== this.originalPort;
+          if (this.tcpKissPort !== this.originalPort) return true;
+          const o = this.originalDirewolf;
+          return this.direwolfEnabled !== o.enabled
+            || this.direwolfMode !== o.mode
+            || this.direwolfHost !== o.host
+            || this.direwolfKissPort !== o.kissPort
+            || this.direwolfAgwPort !== o.agwPort
+            || this.direwolfAgwCallsign !== o.agwCallsign
+            || this.direwolfAgwMonitor !== o.agwMonitor
+            || this.direwolfReconnect !== o.reconnect;
         },
         async saveBridgeSettings() {
           if (!this.hasChanges) return;
           
-          if (!confirm('Changing the TCP KISS port requires restarting the bridge. Continue?')) {
+          if (!confirm('Changing bridge settings requires restarting the bridge. Continue?')) {
             return;
           }
           
@@ -172,7 +208,17 @@
             const saveResp = await fetch('/api/bridge/settings', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tcp_kiss_port: this.tcpKissPort })
+              body: JSON.stringify({
+                tcp_kiss_port: this.tcpKissPort,
+                direwolf_enabled: this.direwolfEnabled,
+                direwolf_mode: this.direwolfMode,
+                direwolf_host: this.direwolfHost,
+                direwolf_kiss_port: this.direwolfKissPort,
+                direwolf_agw_port: this.direwolfAgwPort,
+                direwolf_agw_callsign: this.direwolfAgwCallsign,
+                direwolf_agw_monitor: this.direwolfAgwMonitor,
+                direwolf_reconnect: this.direwolfReconnect,
+              })
             });
             
             if (!saveResp.ok) {
@@ -232,6 +278,120 @@
                  max="65535"
                  x-model.number="tcpKissPort">
           <p class="form-hint">Port for TCP KISS client connections (default: 8001). Change to avoid conflicts with direwolf.</p>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Direwolf Integration -->
+  <div class="card settings-section mt-4">
+    <div class="card__header">
+      <h2>Direwolf Integration</h2>
+    </div>
+    <div class="card__body">
+      <template x-if="loading">
+        <div class="flex items-center gap-2">
+          <span class="spinner spinner--sm"></span>
+          <span>Loading...</span>
+        </div>
+      </template>
+      
+      <template x-if="!loading && !offline">
+        <div>
+          <div class="form-group">
+            <label class="form-check">
+              <input type="checkbox" x-model="direwolfEnabled">
+              <span>Enable Direwolf Connection</span>
+            </label>
+            <p class="form-hint">Connect to a running direwolf instance for software TNC / RF transmission.</p>
+          </div>
+
+          <template x-if="direwolfEnabled">
+            <div>
+              <div class="form-group">
+                <label class="form-label">Protocol Mode</label>
+                <div class="flex gap-4">
+                  <label class="form-check">
+                    <input type="radio" value="kiss" x-model="direwolfMode">
+                    <span>TCP KISS</span>
+                  </label>
+                  <label class="form-check">
+                    <input type="radio" value="agw" x-model="direwolfMode">
+                    <span>AGW</span>
+                  </label>
+                </div>
+                <p class="form-hint">KISS: raw frame forwarding. AGW: connected-mode AX.25, monitoring.</p>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="direwolf-host">Direwolf Host</label>
+                <input type="text"
+                       id="direwolf-host"
+                       class="form-input"
+                       style="max-width: 200px;"
+                       x-model="direwolfHost"
+                       placeholder="localhost">
+              </div>
+
+              <template x-if="direwolfMode === 'kiss'">
+                <div class="form-group">
+                  <label class="form-label" for="direwolf-kiss-port">KISS Port</label>
+                  <input type="number"
+                         id="direwolf-kiss-port"
+                         class="form-input"
+                         style="max-width: 150px;"
+                         min="1"
+                         max="65535"
+                         x-model.number="direwolfKissPort">
+                  <p class="form-hint">Direwolf's TCP KISS server port (default: 8001).</p>
+                </div>
+              </template>
+
+              <template x-if="direwolfMode === 'agw'">
+                <div>
+                  <div class="form-group">
+                    <label class="form-label" for="direwolf-agw-port">AGW Port</label>
+                    <input type="number"
+                           id="direwolf-agw-port"
+                           class="form-input"
+                           style="max-width: 150px;"
+                           min="1"
+                           max="65535"
+                           x-model.number="direwolfAgwPort">
+                    <p class="form-hint">Direwolf's AGW server port (default: 8000).</p>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="direwolf-callsign">Callsign</label>
+                    <input type="text"
+                           id="direwolf-callsign"
+                           class="form-input"
+                           style="max-width: 150px;"
+                           x-model="direwolfAgwCallsign"
+                           placeholder="N0CALL"
+                           required>
+                    <p class="form-hint">Your callsign for AGW registration (required).</p>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-check">
+                      <input type="checkbox" x-model="direwolfAgwMonitor">
+                      <span>Enable monitoring</span>
+                    </label>
+                    <p class="form-hint">Receive all frames on the channel (not just addressed to you).</p>
+                  </div>
+                </div>
+              </template>
+
+              <div class="form-group">
+                <label class="form-check">
+                  <input type="checkbox" x-model="direwolfReconnect">
+                  <span>Auto-reconnect</span>
+                </label>
+                <p class="form-hint">Automatically reconnect if the direwolf connection drops.</p>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
     </div>

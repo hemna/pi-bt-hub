@@ -123,21 +123,21 @@
         /* Update scan store based on events */
         const scanStore = Alpine.store('scan');
         if (scanStore) {
-          if (data.type === 'scan_started') {
+          if (data.event === 'scan_started') {
             scanStore.start();
-          } else if (data.type === 'scan_stopped') {
+          } else if (data.event === 'scan_stopped') {
             scanStore.stop();
           }
         }
 
         /* Auto-show toasts for certain event types */
         const store = Alpine.store('toasts');
-        if (store && data.type === 'device_connected') {
-          store.success('Device connected: ' + (data.device_name || data.mac_address));
-        } else if (store && data.type === 'device_disconnected') {
-          store.info('Device disconnected: ' + (data.device_name || data.mac_address));
-        } else if (store && data.type === 'error') {
-          store.error(data.message || 'An error occurred');
+        if (store && data.event === 'device_connected') {
+          store.success('Device connected: ' + (data.data?.device_name || data.data?.mac_address || 'unknown'));
+        } else if (store && data.event === 'device_disconnected') {
+          store.info('Device disconnected: ' + (data.data?.device_name || data.data?.mac_address || 'unknown'));
+        } else if (store && data.event === 'error') {
+          store.error(data.data?.message || 'An error occurred');
         }
       } catch (err) {
         /* not JSON, ignore */
@@ -161,12 +161,6 @@
       <li>
         <a href="/"
            class="nav__link {% if request.url.path == '/' %}nav__link--active{% endif %}">
-          Dashboard
-        </a>
-      </li>
-      <li>
-        <a href="/devices"
-           class="nav__link {% if request.url.path.startswith('/devices') %}nav__link--active{% endif %}">
           Devices
         </a>
       </li>

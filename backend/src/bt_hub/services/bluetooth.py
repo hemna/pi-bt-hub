@@ -105,7 +105,9 @@ class BlueZManager:
         self._bus: MessageBus | None = None
         self._is_scanning = False
         self._scan_task: asyncio.Task[None] | None = None
+        self._hcitool_task: asyncio.Task[None] | None = None
         self._signal_handlers: list[Any] = []
+        self._bridge_was_running = False
 
     @property
     def is_scanning(self) -> bool:
@@ -473,10 +475,189 @@ class BlueZManager:
         )
         return await self.get_adapter_state()
 
+    async def _stop_bridge_for_scan(self) -> bool:
+        """Stop bt-bridge service if running, to free the radio for Classic discovery.
+
+        On Pi Zero W, the shared BLE/Classic radio cannot do BR/EDR inquiry
+        while BLE advertising is active. We temporarily stop bt-bridge during
+        scans and restart it after.
+
+        Returns:
+            True if bt-bridge was running and was stopped, False otherwise.
+        """
+        import shutil
+
+        systemctl = shutil.which("systemctl") or "/bin/systemctl"
+        try:
+            # Check if bt-bridge is active
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", systemctl, "is-active", "bt-bridge.service",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if proc.returncode != 0:
+                return False  # Not running, nothing to do
+
+            # Stop bt-bridge — use kill + stop to be fast
+            logger.info("Stopping bt-bridge to allow Classic BT discovery...")
+            # First send SIGTERM via kill (immediate, doesn't wait)
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", systemctl, "kill", "bt-bridge.service",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            # Now wait for it to actually die (poll is-active)
+            for _ in range(10):
+                await asyncio.sleep(0.5)
+                check = await asyncio.create_subprocess_exec(
+                    "sudo", systemctl, "is-active", "bt-bridge.service",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(check.communicate(), timeout=3.0)
+                if check.returncode != 0:
+                    # It's dead
+                    break
+            else:
+                # Still alive after 5s — force kill
+                logger.warning("bt-bridge didn't stop gracefully, sending SIGKILL")
+                proc = await asyncio.create_subprocess_exec(
+                    "sudo", systemctl, "kill", "--signal=SIGKILL", "bt-bridge.service",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                await asyncio.sleep(1.0)
+
+            # Give BlueZ time to release the radio
+            await asyncio.sleep(1.0)
+            logger.info("bt-bridge stopped for scan")
+            return True
+
+        except Exception:
+            logger.warning("Error stopping bt-bridge for scan", exc_info=True)
+            return False
+
+    async def _restart_bridge_after_scan(self) -> None:
+        """Restart bt-bridge after scan completes."""
+        import shutil
+
+        systemctl = shutil.which("systemctl") or "/bin/systemctl"
+        try:
+            logger.info("Restarting bt-bridge after scan...")
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", systemctl, "start", "bt-bridge.service",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=10.0)
+            if proc.returncode == 0:
+                logger.info("bt-bridge restarted successfully")
+            else:
+                logger.warning("Failed to restart bt-bridge (exit %d)", proc.returncode)
+        except Exception:
+            logger.warning("Error restarting bt-bridge after scan", exc_info=True)
+
+    async def _hcitool_classic_scan(self, duration: int) -> None:
+        """Run hcitool scan to find Classic BR/EDR devices.
+
+        BlueZ D-Bus StartDiscovery often fails to discover Classic-only
+        devices (like the Kenwood TH-D74) even with Transport=auto.
+        hcitool scan uses the HCI inquiry command directly and reliably
+        finds Classic devices. We run it in parallel and emit
+        device_discovered events for any devices found.
+        """
+        import shutil
+
+        hcitool = shutil.which("hcitool") or "/usr/bin/hcitool"
+        try:
+            logger.info("Running hcitool scan for Classic BR/EDR devices...")
+            proc = await asyncio.create_subprocess_exec(
+                hcitool, "scan", "--flush",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=float(duration + 5)
+            )
+
+            if proc.returncode != 0:
+                logger.debug(
+                    "hcitool scan failed (exit %d): %s",
+                    proc.returncode,
+                    stderr.decode(errors="replace").strip(),
+                )
+                return
+
+            # Parse hcitool scan output:
+            # "Scanning ...\n\tAA:BB:CC:DD:EE:FF\tDevice Name\n"
+            output = stdout.decode(errors="replace")
+            for line in output.splitlines():
+                line = line.strip()
+                if not line or line.startswith("Scanning"):
+                    continue
+                parts = line.split("\t", 1)
+                if len(parts) >= 2:
+                    mac = parts[0].strip()
+                    name = parts[1].strip() if len(parts) > 1 else None
+                    logger.info(
+                        "Classic BR/EDR device found via hcitool: %s (%s)",
+                        mac,
+                        name or "unknown",
+                    )
+                    await self._event_bus.publish(
+                        Event(
+                            "device_discovered",
+                            {
+                                "mac_address": mac,
+                                "name": name,
+                                "alias": name,
+                                "rssi": None,
+                                "paired": False,
+                                "connected": False,
+                                "device_type": "other",
+                            },
+                        )
+                    )
+
+        except asyncio.TimeoutError:
+            logger.debug("hcitool scan timed out")
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.debug("hcitool classic scan failed", exc_info=True)
+
     async def start_discovery(self, duration_seconds: int = 10) -> None:
         """Start Bluetooth discovery, auto-stop after duration_seconds."""
         if self._is_scanning:
             raise AlreadyScanningError()
+
+        # On Pi Zero W, the BLE advertising from bt-bridge monopolizes the
+        # shared radio and prevents Classic BR/EDR inquiry scans from working.
+        # Temporarily stop bt-bridge during discovery so Classic devices
+        # (like Kenwood TH-D74) can be found.
+        bridge_was_running = await self._stop_bridge_for_scan()
+
+        # Set discovery filter to find BOTH BLE and Classic (BR/EDR) devices.
+        # Without this, BlueZ may default to BLE-only on some adapters,
+        # which means Classic devices like the Kenwood TH-D74 won't appear.
+        try:
+            await self._call_method(
+                path=self._adapter_path,
+                interface=ADAPTER_INTERFACE,
+                method="SetDiscoveryFilter",
+                signature="a{sv}",
+                body=[{"Transport": Variant("s", "auto")}],
+            )
+        except BluetoothError:
+            # Non-fatal: if filter fails, discovery still works (just BLE-only)
+            logger.warning(
+                "Failed to set discovery filter to 'auto' (BR/EDR + LE). "
+                "Classic Bluetooth devices may not appear in scan results."
+            )
 
         await self._call_method(
             path=self._adapter_path,
@@ -484,6 +665,7 @@ class BlueZManager:
             method="StartDiscovery",
         )
         self._is_scanning = True
+        self._bridge_was_running = bridge_was_running
 
         await self._event_bus.publish(
             Event(
@@ -514,8 +696,14 @@ class BlueZManager:
         except Exception:
             logger.debug("Failed to emit cached devices at scan start", exc_info=True)
 
-        # Schedule auto-stop
-        self._scan_task = asyncio.create_task(self._auto_stop_discovery(duration_seconds))
+        # Run hcitool scan in parallel to find Classic BR/EDR devices.
+        # BlueZ D-Bus StartDiscovery often fails to find Classic-only devices
+        # even with Transport=auto/bredr on some firmware versions.
+        self._hcitool_task = asyncio.create_task(self._hcitool_classic_scan(duration_seconds))
+
+        # Schedule auto-stop — uses a longer duration to allow hcitool to complete
+        # (hcitool scan takes ~10-12 seconds for a full inquiry cycle)
+        self._scan_task = asyncio.create_task(self._auto_stop_discovery(max(duration_seconds, 15)))
 
     async def _auto_stop_discovery(self, duration: int) -> None:
         """Wait and then stop discovery."""
@@ -555,6 +743,17 @@ class BlueZManager:
                 await self._scan_task
             self._scan_task = None
 
+        # Wait for hcitool classic scan to finish before restarting bridge
+        # (restarting bridge kills the inquiry scan)
+        if self._hcitool_task and not self._hcitool_task.done():
+            try:
+                await asyncio.wait_for(self._hcitool_task, timeout=15.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._hcitool_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._hcitool_task
+            self._hcitool_task = None
+
         try:
             await self._call_method(
                 path=self._adapter_path,
@@ -568,6 +767,10 @@ class BlueZManager:
             logger.info("Scan stopped, publishing scan_stopped event")
             await self._event_bus.publish(Event("scan_stopped", {}))
 
+            # Restart bt-bridge if we stopped it for the scan
+            if self._bridge_was_running:
+                await self._restart_bridge_after_scan()
+                self._bridge_was_running = False
     # --- Device operations ---
 
     async def get_all_device_states(self) -> dict[str, dict[str, Any]]:

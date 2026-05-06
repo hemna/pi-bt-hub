@@ -3,108 +3,110 @@
 <div class="scan-progress"
      x-data="{
        devices: [],
-       ignoredMacs: new Set(),
        scanning: true,
+       started: false,
        countdown: {{ duration | default(10) }},
        init() {
-          // Fetch devices BlueZ already knows about that have RSSI (actively seen)
+          // Periodically fetch devices during scan to catch discoveries
+          this._fetchDevices();
+          this._pollTimer = setInterval(() => {
+            if (this.scanning) this._fetchDevices();
+          }, 3000);
+
+          // Fallback: if no scan_stopped event within a generous timeout,
+          // mark as complete. The background task may take extra time due to
+          // bridge stop and hcitool classic scan.
+          setTimeout(() => {
+            if (this.scanning) {
+              this.scanning = false;
+              this.started = false;
+              if (this._timer) clearInterval(this._timer);
+              if (this._pollTimer) clearInterval(this._pollTimer);
+              window.dispatchEvent(new CustomEvent('scan-stopped'));
+              setTimeout(() => this._fetchDevices(), 1000);
+            }
+          }, {{ (duration | default(10)) * 1000 + 15000 }});
+        },
+        _fetchDevices() {
           fetch('/api/devices')
             .then(r => r.json())
             .then(data => {
               if (data.devices) {
                 data.devices.forEach(d => {
-                  // Track ignored MACs so we can filter WebSocket events
-                  if (d.is_ignored) {
-                    this.ignoredMacs.add(d.mac_address);
-                  }
-                  // Only add devices that have RSSI (actively being seen) and are NOT ignored
-                  if (d.rssi && !d.is_ignored && !this.devices.find(dev => dev.mac_address === d.mac_address)) {
+                  if (!this.devices.find(dev => dev.mac_address === d.mac_address)) {
                     this.devices.push({
                       mac_address: d.mac_address,
-                      name: d.alias || d.name || d.mac_address,
+                      name: d.name || d.mac_address,
                       rssi: d.rssi,
                       paired: d.paired || false,
                       connected: d.connected || false,
-                      device_type: d.device_type || null,
-                      is_favorite: d.is_favorite || false,
-                      is_ignored: false
+                      device_type: d.device_type || null
                     });
+                  } else {
+                    // Update existing device
+                    const idx = this.devices.findIndex(dev => dev.mac_address === d.mac_address);
+                    if (d.rssi) this.devices[idx].rssi = d.rssi;
+                    if (d.name) this.devices[idx].name = d.name;
+                    if (d.connected !== undefined) this.devices[idx].connected = d.connected;
+                    if (d.paired !== undefined) this.devices[idx].paired = d.paired;
                   }
                 });
               }
             })
             .catch(() => {});
-
-          // Also fetch ignored devices specifically to populate ignoredMacs
-          fetch('/api/devices?filter=ignored')
-            .then(r => r.json())
-            .then(data => {
-              if (data.devices) {
-                data.devices.forEach(d => {
-                  this.ignoredMacs.add(d.mac_address);
-                });
-              }
-            })
-            .catch(() => {});
-
-          // Countdown timer
-          this._timer = setInterval(() => {
-            if (this.countdown > 0) {
-              this.countdown--;
-            } else {
-              clearInterval(this._timer);
-            }
-          }, 1000);
-
-          // Fallback: mark scan as complete after duration + buffer,
-          // in case the WebSocket scan_stopped event is missed.
-          setTimeout(() => {
-            if (this.scanning) {
-              this.scanning = false;
-              clearInterval(this._timer);
-              // Dispatch custom event so the button updates
-              window.dispatchEvent(new CustomEvent('scan-stopped'));
-            }
-          }, {{ (duration | default(10)) * 1000 + 3000 }});
         }
      }"
       @bt-ws-message.window="
-        if ($event.detail.type === 'device_discovered') {
-          const d = $event.detail;
-          // Only show devices with RSSI (actively being seen) and NOT ignored
-          if (!d.rssi) return;
-          if (ignoredMacs.has(d.mac_address)) return;
+        if ($event.detail.event === 'scan_started') {
+          // BlueZ actually started — begin the countdown now
+          if (!started) {
+            started = true;
+            countdown = ($event.detail.data && $event.detail.data.duration_seconds) || {{ duration | default(10) }};
+            this._timer = setInterval(() => {
+              if (countdown > 0) {
+                countdown--;
+              } else {
+                clearInterval(this._timer);
+              }
+            }, 1000);
+          }
+        } else if ($event.detail.event === 'device_discovered') {
+          const d = $event.detail.data || $event.detail;
           const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
           if (idx === -1) {
            devices.unshift({
               mac_address: d.mac_address,
-              name: d.name || d.alias || d.mac_address,
+              name: d.name || d.mac_address,
               rssi: d.rssi,
               paired: d.paired || false,
               connected: d.connected || false,
-              device_type: d.device_type || null,
-              is_favorite: d.is_favorite || false,
-              is_ignored: false
+              device_type: d.device_type || null
             });
           } else {
             // Update RSSI for already-seen device
-            devices[idx].rssi = d.rssi;
-          }
-        } else if ($event.detail.type === 'device_updated') {
-          const d = $event.detail;
-          const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
-          if (idx !== -1 && d.rssi) {
-            devices[idx].rssi = d.rssi;
+            if (d.rssi) devices[idx].rssi = d.rssi;
             if (d.name) devices[idx].name = d.name;
-            if (d.connected !== undefined) devices[idx].connected = d.connected;
-            if (d.paired !== undefined) devices[idx].paired = d.paired;
           }
-        } else if ($event.detail.type === 'scan_stopped') {
+        } else if ($event.detail.event === 'device_updated') {
+          const d = $event.detail.data || $event.detail;
+          const mac = d.mac_address;
+          const props = d.properties || d;
+          const idx = devices.findIndex(dev => dev.mac_address === mac);
+          if (idx !== -1) {
+            if (props.rssi || props.RSSI) devices[idx].rssi = props.rssi || props.RSSI;
+            if (props.name || props.Name) devices[idx].name = props.name || props.Name;
+            if (props.connected !== undefined || props.Connected !== undefined) devices[idx].connected = props.connected ?? props.Connected;
+            if (props.paired !== undefined || props.Paired !== undefined) devices[idx].paired = props.paired ?? props.Paired;
+          }
+        } else if ($event.detail.event === 'scan_stopped') {
           scanning = false;
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
-          // Dispatch custom event so the button updates
+          if (this._pollTimer) clearInterval(this._pollTimer);
           window.dispatchEvent(new CustomEvent('scan-stopped'));
+          // Fetch immediately (before BlueZ evicts) and again after a moment
+          this._fetchDevices();
+          setTimeout(() => this._fetchDevices(), 1500);
         }
       ">
 
@@ -117,7 +119,8 @@
       <span style="color: var(--green);">&#10003;</span>
     </template>
     <strong>
-      <span x-show="scanning" x-text="'Scanning... ' + countdown + 's remaining'"></span>
+      <span x-show="scanning && !started">Starting scan...</span>
+      <span x-show="scanning && started" x-text="'Scanning... ' + countdown + 's remaining'"></span>
       <span x-show="!scanning">Scan complete</span>
     </strong>
     <span class="text-secondary" style="margin-left: auto;" x-text="devices.length + ' device(s) found'"></span>
@@ -163,43 +166,8 @@
               </template>
             </div>
           </div>
-
-          <div class="device-card__actions">
-            <button class="favorite-btn"
-                    :class="{ 'favorite-btn--active': device.is_favorite }"
-                    :data-tooltip="device.is_favorite ? 'Remove from favorites' : 'Add to favorites'"
-                    @click="
-                      const newVal = !device.is_favorite;
-                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/favorite', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: 'is_favorite=' + newVal
-                      }).then(r => { if (r.ok) device.is_favorite = newVal; });
-                    ">
-              <span x-text="device.is_favorite ? '★' : '☆'"></span>
-            </button>
-            <button class="ignore-btn"
-                    :data-tooltip="'Ignore this device'"
-                    @click="
-                      fetch('/api/devices/' + encodeURIComponent(device.mac_address) + '/ignore', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: 'is_ignored=true'
-                      }).then(r => {
-                        if (r.ok) {
-                          // Add to ignored set and remove from visible list
-                          ignoredMacs.add(device.mac_address);
-                          const idx = devices.findIndex(d => d.mac_address === device.mac_address);
-                          if (idx !== -1) devices.splice(idx, 1);
-                        }
-                      });
-                    ">
-              <span>👀</span>
-            </button>
-          </div>
         </div>
         <div class="device-card__bottom">
-          <span class="device-card__time" x-text="'Just now'"></span>
           <div class="flex gap-1">
             <a :href="'/devices/' + device.mac_address" class="btn btn--secondary btn--sm">Details</a>
             <template x-if="device.paired && !device.connected">

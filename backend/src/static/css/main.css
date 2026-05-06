@@ -800,6 +800,16 @@ img {
   flex: 1;
 }
 
+.filter-bar__group--disabled .filter-bar__btn {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.filter-bar__group--disabled .filter-bar__btn--active {
+  opacity: 0.6;
+}
+
 /* =========================================
    Device Grid
    ========================================= */
