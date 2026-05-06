@@ -57,11 +57,11 @@
         }
      }"
       @bt-ws-message.window="
-        if ($event.detail.type === 'scan_started') {
+        if ($event.detail.event === 'scan_started') {
           // BlueZ actually started — begin the countdown now
           if (!started) {
             started = true;
-            countdown = $event.detail.duration_seconds || {{ duration | default(10) }};
+            countdown = ($event.detail.data && $event.detail.data.duration_seconds) || {{ duration | default(10) }};
             this._timer = setInterval(() => {
               if (countdown > 0) {
                 countdown--;
@@ -70,8 +70,8 @@
               }
             }, 1000);
           }
-        } else if ($event.detail.type === 'device_discovered') {
-          const d = $event.detail;
+        } else if ($event.detail.event === 'device_discovered') {
+          const d = $event.detail.data || $event.detail;
           const idx = devices.findIndex(dev => dev.mac_address === d.mac_address);
           if (idx === -1) {
            devices.unshift({
@@ -87,8 +87,8 @@
             if (d.rssi) devices[idx].rssi = d.rssi;
             if (d.name) devices[idx].name = d.name;
           }
-        } else if ($event.detail.type === 'device_updated') {
-          const d = $event.detail;
+        } else if ($event.detail.event === 'device_updated') {
+          const d = $event.detail.data || $event.detail;
           const mac = d.mac_address;
           const props = d.properties || d;
           const idx = devices.findIndex(dev => dev.mac_address === mac);
@@ -98,7 +98,7 @@
             if (props.connected !== undefined || props.Connected !== undefined) devices[idx].connected = props.connected ?? props.Connected;
             if (props.paired !== undefined || props.Paired !== undefined) devices[idx].paired = props.paired ?? props.Paired;
           }
-        } else if ($event.detail.type === 'scan_stopped') {
+        } else if ($event.detail.event === 'scan_stopped') {
           scanning = false;
           countdown = 0;
           if (this._timer) clearInterval(this._timer);
