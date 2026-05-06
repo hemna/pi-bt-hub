@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from typing import TYPE_CHECKING, Annotated, Optional
@@ -87,7 +88,9 @@ async def start_scan(
         settings = await store.get_settings()
         duration = int(settings.get("scan_duration_seconds", 10))
     logger.info("Starting scan for %d seconds", duration)
-    await bt.start_discovery(duration_seconds=duration)
+
+    # Launch discovery in background so the UI responds instantly
+    asyncio.create_task(bt.start_discovery(duration_seconds=duration))
 
     # Return HTML partial for HTMX, or JSON for API clients
     if "hx-request" in request.headers:
@@ -222,7 +225,7 @@ def create_api_router(container: ServiceContainer) -> APIRouter:
             settings = await store.get_settings()
             duration = int(settings.get("scan_duration_seconds", 10))
         logger.info("Starting scan for %d seconds", duration)
-        await bt.start_discovery(duration_seconds=duration)
+        asyncio.create_task(bt.start_discovery(duration_seconds=duration))
         if "hx-request" in request.headers:
             return render_template("partials/scan_progress.html", request, duration=duration)
         return ScanResponse(status="scanning", duration_seconds=duration)
