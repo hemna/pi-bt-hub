@@ -120,7 +120,10 @@ async def index_page(
     templates: Annotated[Jinja2Templates, Depends(get_templates)],
     bridge_client: Annotated[BtBridgeClient, Depends(get_bt_bridge_client)],
 ) -> object:
-    """Serve the main index page with adapter state and device summary."""
+    """Serve the combined dashboard + devices page."""
+    from bt_hub.api.devices import _build_runtime_state
+    from bt_hub.models.device import DeviceRuntimeState
+
     try:
         adapter = await bt.get_adapter_state()
     except Exception:
@@ -138,23 +141,26 @@ async def index_page(
         except Exception:
             pass
 
-    # Get live device counts directly from BlueZ
+    # Get live devices from BlueZ
     try:
         live_states = await bt.get_all_device_states()
     except Exception:
         live_states = {}
 
-    device_count = len(live_states)
-    paired_count = sum(1 for d in live_states.values() if d.get("paired", False))
-    connected_count = sum(1 for d in live_states.values() if d.get("connected", False))
+    devices: list[DeviceRuntimeState] = []
+    for mac, live in live_states.items():
+        devices.append(_build_runtime_state(mac, live))
+
+    # Sort: connected first, then paired, then by name/MAC
+    devices.sort(key=lambda d: (not d.connected, not d.paired, (d.name or d.mac_address).lower()))
 
     return render_template(
         "index.html",
         request,
         adapter=adapter,
-        device_count=device_count,
-        paired_count=paired_count,
-        connected_count=connected_count,
+        devices=devices,
+        device_count=len(devices),
+        is_scanning=bt.is_scanning,
         bridge_status=bridge_status,
         bridge_enabled=settings.bridge_enabled,
         service_status=service_status,
@@ -246,6 +252,9 @@ def create_page_router(
 
     @pages.get("/")
     async def index_page_factory(request: Request) -> object:
+        from bt_hub.api.devices import _build_runtime_state
+        from bt_hub.models.device import DeviceRuntimeState
+
         assert container.services is not None
         bt = container.services.bluez_mgr
 
@@ -263,23 +272,27 @@ def create_page_router(
                 with contextlib.suppress(Exception):
                     service_status = await container.services.systemd_service.status()
 
-        # Get live device counts directly from BlueZ
+        # Get live devices from BlueZ
         try:
             live_states = await bt.get_all_device_states() if bt else {}
         except Exception:
             live_states = {}
 
-        device_count = len(live_states)
-        paired_count = sum(1 for d in live_states.values() if d.get("paired", False))
-        connected_count = sum(1 for d in live_states.values() if d.get("connected", False))
+        devices: list[DeviceRuntimeState] = []
+        for mac, live in live_states.items():
+            devices.append(_build_runtime_state(mac, live))
+
+        devices.sort(
+            key=lambda d: (not d.connected, not d.paired, (d.name or d.mac_address).lower())
+        )
 
         return render_template(
             "index.html",
             request,
             adapter=adapter,
-            device_count=device_count,
-            paired_count=paired_count,
-            connected_count=connected_count,
+            devices=devices,
+            device_count=len(devices),
+            is_scanning=bt.is_scanning if bt else False,
             bridge_status=bridge_status,
             bridge_enabled=settings.bridge_enabled,
             service_status=service_status,

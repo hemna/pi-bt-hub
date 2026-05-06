@@ -297,31 +297,11 @@ async def remove_device(
 
 
 @router.get("/devices")
-async def devices_page(
-    request: Request,
-    templates: Annotated[Jinja2Templates, Depends(get_templates)],
-    bt: Annotated[BlueZManager, Depends(get_bluetooth_manager)],
-) -> object:
-    """Serve the devices list page — shows only current BlueZ discovery."""
-    try:
-        live_states = await bt.get_all_device_states()
-    except BluetoothError:
-        live_states = {}
+async def devices_page() -> Response:
+    """Redirect /devices to / (combined page)."""
+    from fastapi.responses import RedirectResponse
 
-    devices: list[DeviceRuntimeState] = []
-    for mac, live in live_states.items():
-        devices.append(_build_runtime_state(mac, live))
-
-    # Sort: connected first, then paired, then by name/MAC
-    devices.sort(key=lambda d: (not d.connected, not d.paired, (d.name or d.mac_address).lower()))
-
-    return render_template(
-        "devices.html",
-        request,
-        devices=devices,
-        device_count=len(devices),
-        is_scanning=bt.is_scanning,
-    )
+    return RedirectResponse(url="/", status_code=302)
 
 
 @router.get("/devices/{mac_address}")
@@ -493,26 +473,10 @@ def create_page_router(
         return container.services.bluez_mgr
 
     @pages.get("/devices")
-    async def devices_page_factory(request: Request) -> object:
-        bt = _get_bt()
-        try:
-            live_states = await bt.get_all_device_states() if bt else {}
-        except BluetoothError:
-            live_states = {}
-        devices: list[DeviceRuntimeState] = []
-        for mac, live in live_states.items():
-            devices.append(_build_runtime_state(mac, live))
-        devices.sort(
-            key=lambda d: (not d.connected, not d.paired, (d.name or d.mac_address).lower())
-        )
-        return render_template(
-            "devices.html",
-            request,
-            devices=devices,
-            device_count=len(devices),
-            is_scanning=bt.is_scanning if bt else False,
-            active_page=active_page_prefix,
-        )
+    async def devices_page_factory() -> Response:
+        from fastapi.responses import RedirectResponse
+
+        return RedirectResponse(url="/", status_code=302)
 
     @pages.get("/devices/{mac_address}")
     async def device_detail_page_factory(mac_address: str, request: Request) -> object:

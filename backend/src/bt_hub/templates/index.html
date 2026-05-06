@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Pi BT Hub{% endblock %}
+{% block title %}Pi BT Hub{% endblock %}
 
 {% block content %}
 <div class="bluetooth-content">
 <div class="page-header">
-  <h1>Dashboard</h1>
-  <p>Bluetooth adapter overview</p>
+  <h1>Pi BT Hub</h1>
+  <p>Bluetooth device management</p>
 </div>
 
 <!-- Adapter Status Card -->
 <div class="card mb-4">
   <div class="card__header">
-    <h2>Adapter Status</h2>
+    <h2>Adapter</h2>
     {% if adapter %}
     <div class="flex items-center gap-2">
       {% if adapter.powered %}
@@ -35,15 +35,6 @@
       <dt>Name</dt>
       <dd>{{ adapter.name }}</dd>
 
-      <dt>Powered</dt>
-      <dd>
-        {% if adapter.powered %}
-          <span class="badge badge--on">Yes</span>
-        {% else %}
-          <span class="badge badge--off">No</span>
-        {% endif %}
-      </dd>
-
       <dt>Discoverable</dt>
       <dd>
         {% if adapter.discoverable %}
@@ -55,7 +46,6 @@
     </div>
 
     <div class="action-group">
-      <!-- Power Toggle -->
       {% if adapter.powered %}
       <button class="btn btn--secondary"
               hx-post="/api/adapter/power"
@@ -110,7 +100,6 @@
   </div>
   <div class="card__body">
     {% if bridge_status %}
-    {# Bridge daemon is online - show bridge status #}
     <div class="info-grid mb-4">
       <dt>Service</dt>
       <dd><span class="badge badge--on">Running</span></dd>
@@ -179,113 +168,106 @@
     </div>
 
     {% elif service_status %}
-    {# Service status available but daemon not responding #}
     <div id="bridge-service-controls">
       {% include "partials/bridge_service_status.html" %}
     </div>
 
     {% else %}
-    {# No service status available #}
     <div class="empty-state">
       <div class="empty-state__icon">&#128279;</div>
       <div class="empty-state__title">Bridge Offline</div>
       <p class="empty-state__text">The bridge daemon is not responding. Check that bt-bridge.service is running.</p>
     </div>
     {% endif %}
-
-    {# Logs section (hidden by default) #}
-    <div id="bridge-logs" style="display: none; margin-top: 1rem;">
-      <div class="card__header" style="padding: 0.5rem 0;">
-        <h3 style="font-size: 0.9rem; margin: 0;">Service Logs</h3>
-        <button class="btn btn--sm btn--secondary" onclick="document.getElementById('bridge-logs').style.display='none'">
-          Close
-        </button>
-      </div>
-      <pre id="bridge-logs-content" style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 4px; font-size: 0.75rem; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">
-        Click "View Logs" to load logs...
-      </pre>
-    </div>
-
-    {# Install modal (hidden by default) #}
-    <div id="bridge-install-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-      <div style="background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <h3 style="margin: 0;">Installing bt-bridge</h3>
-          <button class="btn btn--sm btn--secondary" onclick="closeBridgeInstallModal()">Close</button>
-        </div>
-        <div id="bridge-install-status" style="margin-bottom: 1rem;">
-          <div class="flex items-center gap-2">
-            <span class="spinner spinner--sm"></span>
-            <span>Installing... This may take a few minutes.</span>
-          </div>
-        </div>
-        <pre id="bridge-install-output" style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 4px; font-size: 0.75rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-family: monospace;">
-Cloning bt-bridge repository...
-        </pre>
-      </div>
-    </div>
-
-    <script>
-      function showBridgeInstallModal() {
-        document.getElementById('bridge-install-modal').style.display = 'flex';
-        document.getElementById('bridge-install-status').innerHTML = '<div class="flex items-center gap-2"><span class="spinner spinner--sm"></span><span>Installing... This may take a few minutes.</span></div>';
-        document.getElementById('bridge-install-output').textContent = 'Cloning bt-bridge repository...';
-      }
-      
-      function closeBridgeInstallModal() {
-        document.getElementById('bridge-install-modal').style.display = 'none';
-      }
-      
-      function updateBridgeInstallResult(result) {
-        var statusEl = document.getElementById('bridge-install-status');
-        var outputEl = document.getElementById('bridge-install-output');
-        
-        if (result.success) {
-          statusEl.innerHTML = '<div class="alert alert--success">bt-bridge installed successfully!</div>';
-        } else {
-          statusEl.innerHTML = '<div class="alert alert--error">' + result.message + '</div>';
-        }
-        
-        if (result.output) {
-          outputEl.textContent = result.output;
-        }
-      }
-    </script>
   </div>
 </div>
 {% endif %}
 
-<!-- Device Summary Stats -->
-<div class="stat-grid mb-4">
-  <div class="stat-card">
-    <div class="stat-card__value">{{ device_count | default(0) }}</div>
-    <div class="stat-card__label">Discovered</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__value">{{ paired_count | default(0) }}</div>
-    <div class="stat-card__label">Paired</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__value">{{ connected_count | default(0) }}</div>
-    <div class="stat-card__label">Connected</div>
-  </div>
-</div>
-
-<!-- Scan & Manage Devices CTA -->
-<div class="card">
+<!-- Scan Controls -->
+<div class="card mb-4" x-data="{ scanning: {{ 'true' if is_scanning else 'false' }} }"
+     @scan-stopped.window="scanning = false"
+     @scan-started.window="scanning = true">
   <div class="card__header">
-    <h2>Manage Devices</h2>
+    <h2>Scan for Devices</h2>
+    <span class="badge badge--pairing" x-show="scanning">Scanning...</span>
   </div>
   <div class="card__body">
     <p style="margin-bottom: 1rem; color: var(--text-secondary);">
-      Scan for nearby Bluetooth devices, pair, connect, and manage your devices on the Devices page.
+      Discover nearby Bluetooth devices. Make sure your device is in pairing mode.
     </p>
+
     <div class="action-group">
-      <a href="/devices" class="btn btn--primary">
-        Scan & Manage Devices
-      </a>
+      <button class="btn btn--primary"
+              x-show="!scanning"
+              hx-post="/api/scan/start"
+              hx-target="#device-list"
+              hx-swap="innerHTML"
+              hx-indicator=".scan-indicator"
+              @click="scanning = true">
+        Start Scan
+        <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+      </button>
+      <button class="btn btn--danger"
+              x-show="scanning"
+              hx-post="/api/scan/stop"
+              hx-target="#scan-status"
+              hx-indicator=".scan-indicator"
+              @click="scanning = false">
+        Stop Scan
+        <span class="spinner spinner--sm htmx-indicator scan-indicator"></span>
+      </button>
+    </div>
+
+    <div id="scan-status" class="mt-3">
+      <!-- Scan status updates appear here -->
     </div>
   </div>
 </div>
+
+<!-- Device List -->
+<div x-data="{ search: '' }"
+     x-effect="
+       const term = search.toLowerCase();
+       document.querySelectorAll('#device-list .device-card').forEach(card => {
+         const text = card.textContent.toLowerCase();
+         card.style.display = text.includes(term) ? '' : 'none';
+       });
+     ">
+
+  <div class="filter-bar">
+    <div class="filter-bar__group">
+      <span style="font-size: 0.875rem; color: var(--text-secondary);">
+        {{ device_count | default(0) }} device{{ 's' if device_count != 1 else '' }} discovered
+      </span>
+    </div>
+    <div class="filter-bar__spacer"></div>
+    <div class="flex items-center gap-2">
+      <input type="text"
+             class="form-input"
+             placeholder="Search..."
+             x-model="search"
+             style="width: 10rem; padding: 0.375rem 0.625rem; font-size: 0.8125rem;">
+    </div>
+  </div>
+
+  <div id="device-list">
+    {% if devices %}
+    <div class="device-grid">
+      {% for device in devices %}
+        {% include "partials/device_card.html" %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state__icon">&#128225;</div>
+      <div class="empty-state__title">No devices found</div>
+      <p class="empty-state__text">
+        Click "Start Scan" above to discover nearby Bluetooth devices.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
 </div>
 {% endblock %}
