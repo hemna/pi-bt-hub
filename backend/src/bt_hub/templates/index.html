@@ -234,23 +234,20 @@
        });
      ">
 
-  <div class="filter-bar">
-    <div class="filter-bar__group">
-      <span id="device-count-label" style="font-size: 0.875rem; color: var(--text-secondary);">
-        {{ device_count | default(0) }} device{{ 's' if device_count != 1 else '' }} discovered
-      </span>
-    </div>
-    <div class="filter-bar__spacer"></div>
-    <div class="flex items-center gap-2">
-      <input type="text"
-             class="form-input"
-             placeholder="Search..."
-             x-model="search"
-             style="width: 10rem; padding: 0.375rem 0.625rem; font-size: 0.8125rem;">
-    </div>
+  <div class="flex items-center gap-2 mb-3">
+    <input type="text"
+           class="form-input"
+           placeholder="Search..."
+           x-model="search"
+           style="width: 10rem; padding: 0.375rem 0.625rem; font-size: 0.8125rem;">
   </div>
 
   <div id="device-list">
+    <div class="filter-bar" style="margin-bottom: 0.75rem;">
+      <span style="font-size: 0.875rem; color: var(--text-secondary);">
+        {{ device_count | default(0) }} device{{ 's' if device_count != 1 else '' }} discovered
+      </span>
+    </div>
     {% if devices %}
     <div class="device-grid">
       {% for device in devices %}
