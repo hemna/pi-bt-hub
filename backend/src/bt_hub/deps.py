@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 if TYPE_CHECKING:
-    from fastapi.templating import Jinja2Templates
+    from starlette.templating import Jinja2Templates
 
     from bt_hub.services.bluetooth import BlueZManager
     from bt_hub.services.bridge_proxy import BridgeProxy

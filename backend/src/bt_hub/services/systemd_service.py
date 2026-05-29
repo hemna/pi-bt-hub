@@ -8,12 +8,13 @@ import os
 import shutil
 from typing import Literal
 
-from pydantic import BaseModel
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 
-class ServiceStatus(BaseModel):
+@dataclass
+class ServiceStatus:
     """Status of a systemd service."""
 
     state: Literal["active", "inactive", "failed", "not-found", "unknown"]
@@ -22,7 +23,8 @@ class ServiceStatus(BaseModel):
     description: str | None = None
 
 
-class ServiceResult(BaseModel):
+@dataclass
+class ServiceResult:
     """Result of a service control operation."""
 
     success: bool
@@ -30,7 +32,8 @@ class ServiceResult(BaseModel):
     exit_code: int
 
 
-class InstallResult(BaseModel):
+@dataclass
+class InstallResult:
     """Result of an install operation."""
 
     success: bool

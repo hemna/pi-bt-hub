@@ -49,39 +49,32 @@ def _make_mock_proxy() -> MagicMock:
 @pytest_asyncio.fixture
 async def bridge_client() -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
     """Create a test client with bridge_enabled=True and mocked proxy."""
-    # Set env var BEFORE importing config
     os.environ["BT_HUB_BRIDGE_ENABLED"] = "true"
 
-    # Clear the settings cache to pick up the new env var
     from bt_hub.config import get_settings
-
     get_settings.cache_clear()
 
-    # Also need to initialize templates
-    from fastapi.templating import Jinja2Templates
-    from bt_hub.deps import set_templates
+    from starlette.templating import Jinja2Templates
+    from bt_hub.deps import set_bridge_proxy, set_templates
 
     template_dir = (
         Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
     )
     templates = Jinja2Templates(directory=str(template_dir))
+
+    mock_proxy = _make_mock_proxy()
+    set_bridge_proxy(mock_proxy)
     set_templates(templates)
 
     try:
         from bt_hub.main import create_app
-        from bt_hub import deps
 
         app = create_app()
-        mock_proxy = _make_mock_proxy()
-        app.dependency_overrides[deps.get_bridge_proxy] = lambda: mock_proxy
-        app.dependency_overrides[deps.get_templates] = lambda: templates
-
-        transport = ASGITransport(app=app)
+        transport = ASGITransport(app=app)  # type: ignore[arg-type]
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client, mock_proxy
     finally:
         del os.environ["BT_HUB_BRIDGE_ENABLED"]
-        # Clear cache again for other tests
         get_settings.cache_clear()
 
 

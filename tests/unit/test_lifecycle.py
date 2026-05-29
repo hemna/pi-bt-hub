@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bt_hub.config import Settings
-from bt_hub.lifecycle import BtHubServices, ServiceContainer, shutdown_services, startup_services
+from bt_hub.lifecycle import BtHubServices, shutdown_services, startup_services
 
 
 class TestBtHubServices:
@@ -27,20 +27,6 @@ class TestBtHubServices:
         assert services.systemd_service is None
         assert services.log_handler is None
         assert services.bluez_mgr is None
-
-
-class TestServiceContainer:
-    """Tests for the ServiceContainer class."""
-
-    def test_default_none(self) -> None:
-        container = ServiceContainer()
-        assert container.services is None
-
-    def test_set_services(self) -> None:
-        container = ServiceContainer()
-        services = MagicMock(spec=BtHubServices)
-        container.services = services
-        assert container.services is services
 
 
 class TestStartupServices:
@@ -62,7 +48,7 @@ class TestStartupServices:
             # The key is that startup doesn't raise
             assert services.device_store is not None
             assert services.event_bus is not None
-            assert services.bt_bridge_client is not None
+            assert services.bt_bridge_client is None
             assert services.bridge_proxy is None
             assert services.systemd_service is None
         finally:
@@ -74,7 +60,7 @@ class TestStartupServices:
         try:
             assert services.bridge_proxy is None
             assert services.systemd_service is None
-            assert services.bt_bridge_client is not None
+            assert services.bt_bridge_client is None
         finally:
             await services.device_store.close()
 

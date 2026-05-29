@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +32,8 @@ class BtBridgeClient:
         """
         if not self._base_url:
             return None
+
+        import httpx
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
