@@ -1,6 +1,8 @@
 """Unit tests for BlueZManager service (T020, T038).
 
 Since we can't use real D-Bus on macOS, we mock dbus_fast internals.
+These tests require dbus_fast to be installed (the Message class must be a real
+type, not None) — they are skipped automatically when dbus_fast is absent.
 """
 
 from __future__ import annotations
@@ -10,6 +12,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from bt_hub.services.bluetooth import HAS_DBUS_FAST
+
+pytestmark = pytest.mark.skipif(
+    not HAS_DBUS_FAST,
+    reason="dbus_fast not installed — BlueZManager D-Bus tests require it",
+)
 
 from bt_hub.api import (
     AdapterUnavailableError,
