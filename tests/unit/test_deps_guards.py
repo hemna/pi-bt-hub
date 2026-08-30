@@ -51,6 +51,7 @@ def reset_deps() -> None:
 # Each getter raises RuntimeError (not AssertionError) when global is None
 # ---------------------------------------------------------------------------
 
+
 def test_get_device_store_raises_runtime_error_when_none() -> None:
     with pytest.raises(RuntimeError, match="DeviceStore not initialized"):
         get_device_store()
@@ -85,6 +86,7 @@ def test_get_bridge_service_raises_runtime_error_when_none() -> None:
 # Guards raise RuntimeError, not AssertionError (would survive -O flag)
 # ---------------------------------------------------------------------------
 
+
 def test_get_device_store_raises_not_assert_error() -> None:
     exc = None
     try:
@@ -98,6 +100,7 @@ def test_get_device_store_raises_not_assert_error() -> None:
 # ---------------------------------------------------------------------------
 # Each getter returns the value once set via set_*
 # ---------------------------------------------------------------------------
+
 
 def test_get_device_store_returns_value_when_set() -> None:
     mock = MagicMock()
@@ -139,6 +142,7 @@ def test_get_bridge_service_returns_value_when_set() -> None:
 # get_bluetooth_manager already raises AdapterUnavailableError (not RuntimeError)
 # — ensure that behaviour is preserved
 # ---------------------------------------------------------------------------
+
 
 def test_get_bluetooth_manager_raises_adapter_unavailable_when_none() -> None:
     from bt_hub.api import AdapterUnavailableError
