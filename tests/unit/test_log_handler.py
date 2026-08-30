@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import pytest
-
 from bt_hub.services.log_handler import SSELogHandler
 
 
@@ -62,7 +60,7 @@ class TestSSELogHandlerFormat:
 
     def test_entry_level_names(self) -> None:
         handler = SSELogHandler()
-        for level, name in [(logging.DEBUG, "DEBUG"), (logging.ERROR, "ERROR")]:
+        for level, _name in [(logging.DEBUG, "DEBUG"), (logging.ERROR, "ERROR")]:
             record = logging.LogRecord("test", level, "", 0, "x", (), None)
             handler.emit(record)
         entries = handler.get_recent()

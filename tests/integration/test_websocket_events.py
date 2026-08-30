@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -13,8 +11,6 @@ from bt_hub.services.event_bus import Event, EventBus
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
-    from starlette.applications import Starlette
-    from starlette.testclient import TestClient as SyncTestClient
 
 
 @pytest.fixture
@@ -29,6 +25,7 @@ def ws_client(
     so we yield from inside the patch context.
     """
     from pathlib import Path
+
     from starlette.templating import Jinja2Templates
     from starlette.testclient import TestClient
 

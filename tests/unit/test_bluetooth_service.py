@@ -20,16 +20,16 @@ pytestmark = pytest.mark.skipif(
     reason="dbus_fast not installed — BlueZManager D-Bus tests require it",
 )
 
-from bt_hub.api import (
+from bt_hub.api import (  # noqa: E402
     AdapterUnavailableError,
     AlreadyPairedError,
     AlreadyScanningError,
     NotPairedError,
     PairingFailedError,
 )
-from bt_hub.models.device import AdapterState
-from bt_hub.services.bluetooth import BlueZManager
-from bt_hub.services.event_bus import EventBus
+from bt_hub.models.device import AdapterState  # noqa: E402
+from bt_hub.services.bluetooth import BlueZManager  # noqa: E402
+from bt_hub.services.event_bus import EventBus  # noqa: E402
 
 
 def _make_reply(body: list[Any] | None = None, error: bool = False) -> MagicMock:

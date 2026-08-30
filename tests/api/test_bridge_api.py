@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -55,6 +54,7 @@ async def bridge_client() -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
+
     from bt_hub.deps import set_bridge_proxy, set_templates
 
     template_dir = (
@@ -104,12 +104,12 @@ class TestBridgeStatsAPI:
 
 class TestBridgeSettingsAPI:
     async def test_get_settings(self, bridge_client: tuple) -> None:
-        client, mock_proxy = bridge_client
+        client, _ = bridge_client
         resp = await client.get("/api/bridge/settings")
         assert resp.status_code == 200
 
     async def test_update_settings(self, bridge_client: tuple) -> None:
-        client, mock_proxy = bridge_client
+        client, _ = bridge_client
         resp = await client.post(
             "/api/bridge/settings", json={"device_name": "NewName"}
         )

@@ -128,7 +128,9 @@ class TestBridgeProxySettings:
         mock_response.status_code = 200
         mock_response.json.return_value = response_data
 
-        with patch.object(proxy._client, "post", new_callable=AsyncMock, return_value=mock_response):
+        with patch.object(
+            proxy._client, "post", new_callable=AsyncMock, return_value=mock_response
+        ):
             result = await proxy.update_settings({"device_name": "NewName"})
 
         assert result == response_data
@@ -162,7 +164,9 @@ class TestBridgeProxyTncHistory:
         mock_response.status_code = 200
         mock_response.json.return_value = response_data
 
-        with patch.object(proxy._client, "post", new_callable=AsyncMock, return_value=mock_response):
+        with patch.object(
+            proxy._client, "post", new_callable=AsyncMock, return_value=mock_response
+        ):
             result = await proxy.select_tnc("AA:BB:CC:DD:EE:FF")
 
         assert result == response_data

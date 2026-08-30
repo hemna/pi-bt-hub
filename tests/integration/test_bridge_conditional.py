@@ -27,6 +27,7 @@ async def client_bridge_disabled() -> AsyncIterator[AsyncClient]:
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
+
     from bt_hub.deps import set_templates
 
     template_dir = (
@@ -53,6 +54,7 @@ async def client_bridge_enabled() -> AsyncIterator[AsyncClient]:
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
+
     from bt_hub.deps import set_bridge_proxy, set_templates
 
     template_dir = (
