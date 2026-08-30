@@ -61,17 +61,26 @@ async def set_adapter_power(request: Request) -> object:
     return JSONResponse(dataclasses.asdict(state))
 
 
+_SCAN_DURATION_MIN = 5
+_SCAN_DURATION_MAX = 300
+
+
 async def start_scan(request: Request) -> object:
     """Start Bluetooth discovery scan."""
     bt = get_bluetooth_manager()
     store = get_device_store()
 
-    try:
-        duration = int(request.query_params.get("duration", 0)) or None
-    except (ValueError, TypeError):
-        duration = None
-
-    if duration is None:
+    raw = request.query_params.get("duration")
+    if raw is not None:
+        try:
+            duration = int(raw)
+        except (ValueError, TypeError):
+            return JSONResponse(
+                {"error": "invalid_duration", "message": "duration must be an integer"},
+                status_code=400,
+            )
+        duration = max(_SCAN_DURATION_MIN, min(_SCAN_DURATION_MAX, duration))
+    else:
         settings = await store.get_settings()
         duration = int(settings.get("scan_duration_seconds", 10))
 
