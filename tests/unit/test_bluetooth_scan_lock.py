@@ -29,6 +29,7 @@ def manager() -> BlueZManager:
 # Helpers: patch the D-Bus heavy-lifters so tests don't touch hardware
 # ---------------------------------------------------------------------------
 
+
 def _patch_dbus(mgr: BlueZManager) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
     """Return (call_method, stop_bridge, restart_bridge) mocks.
 
@@ -56,6 +57,7 @@ def _patch_dbus(mgr: BlueZManager) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
 # ---------------------------------------------------------------------------
 # Issue #2: scan lock prevents double-start
 # ---------------------------------------------------------------------------
+
 
 async def test_second_concurrent_start_raises_already_scanning(
     manager: BlueZManager,
@@ -127,6 +129,7 @@ async def test_concurrent_starts_only_one_succeeds(
 # ---------------------------------------------------------------------------
 # Issue #13: signal handler must NOT mutate _is_scanning
 # ---------------------------------------------------------------------------
+
 
 async def test_signal_handler_does_not_mutate_is_scanning(
     manager: BlueZManager,
