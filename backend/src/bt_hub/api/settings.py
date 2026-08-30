@@ -31,7 +31,10 @@ async def update_settings(request: Request) -> JSONResponse:
     try:
         data = await request.json()
     except Exception:
-        data = {}
+        return JSONResponse(
+            {"error": "invalid_json", "message": "Request body is not valid JSON"},
+            status_code=400,
+        )
 
     try:
         body = AppSettingsUpdate(**{k: v for k, v in data.items() if v is not None})
