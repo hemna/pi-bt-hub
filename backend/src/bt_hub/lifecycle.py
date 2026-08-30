@@ -78,11 +78,12 @@ async def startup_services(settings: Settings) -> BtHubServices:
     from bt_hub.services.event_bus import EventBus
     from bt_hub.services.log_handler import setup_sse_logging
 
-    # Logging
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    # Logging — only configure if no handlers are attached yet (i.e., not embedded).
+    if not logging.root.handlers:
+        logging.basicConfig(
+            level=getattr(logging, settings.log_level.upper(), logging.INFO),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
     log_handler = setup_sse_logging(
         level=getattr(logging, settings.log_level.upper(), logging.INFO)
     )

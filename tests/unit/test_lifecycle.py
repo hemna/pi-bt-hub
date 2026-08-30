@@ -76,6 +76,27 @@ class TestStartupServices:
         finally:
             await services.device_store.close()
 
+    async def test_basicconfig_skipped_when_handlers_present(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        """startup_services must not call basicConfig when handlers already exist.
+
+        This prevents bt-hub from clobbering a host app's logging setup when
+        embedded (e.g. digipi-web).
+        """
+        import logging
+        from unittest.mock import patch
+
+        sentinel = logging.StreamHandler()
+        logging.root.addHandler(sentinel)
+        try:
+            with patch("logging.basicConfig") as mock_bc:
+                services = await startup_services(settings)
+                await services.device_store.close()
+            mock_bc.assert_not_called()
+        finally:
+            logging.root.removeHandler(sentinel)
+
 
 class TestShutdownServices:
     """Tests for shutdown_services function."""
