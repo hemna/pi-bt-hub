@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -52,6 +53,10 @@ def create_templates(
         templates = Jinja2Templates(directory=str(default_dir))
 
     templates.env.globals["bridge_enabled"] = bridge_enabled
+    try:
+        templates.env.globals["app_version"] = f"v{version('pi-bt-hub')}"
+    except PackageNotFoundError:
+        templates.env.globals["app_version"] = "v?"
     return templates
 
 
