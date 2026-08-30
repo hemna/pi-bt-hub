@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from bt_hub.api import (
     AlreadyPairedError,
     DeviceNotFoundError,
@@ -241,3 +243,136 @@ class TestRemoveDevice:
         assert data["status"] == "removed"
         assert data["mac_address"] == "AA:BB:CC:DD:EE:FF"
         mock_bluetooth_manager.remove_device.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
+
+
+# ---------------------------------------------------------------------------
+# Invalid MAC address — 422 across all action endpoints
+# ---------------------------------------------------------------------------
+
+# validate_mac_address normalises to uppercase before matching, so lowercase
+# inputs are accepted.  Only truly un-parseable strings should appear here.
+_INVALID_MACS = [
+    "not-a-mac",
+    "AA:BB:CC",  # too short (only 3 octets)
+    "AA:BB:CC:DD:EE:GG",  # invalid hex digit (G)
+    "AABBCCDDEEFF",  # no colon separators
+    "AA:BB:CC:DD:EE",  # only 5 octets
+    "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ",  # non-hex letters
+]
+
+
+class TestInvalidMacAddress:
+    """Every endpoint that calls _validate_mac must return 422 for bad MACs."""
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_get_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """GET /api/devices/{mac} returns 422 for a malformed MAC address."""
+        response = await test_client.get(f"/api/devices/{bad_mac}")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_pair_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/pair returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/pair")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_connect_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/connect returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/connect")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_disconnect_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/disconnect returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/disconnect")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_trust_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/trust returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/trust")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_untrust_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/untrust returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/untrust")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    @pytest.mark.parametrize("bad_mac", _INVALID_MACS)
+    async def test_remove_device_returns_422_for_invalid_mac(
+        self,
+        test_client: AsyncClient,
+        bad_mac: str,
+    ) -> None:
+        """POST /api/devices/{mac}/remove returns 422 for a malformed MAC address."""
+        response = await test_client.post(f"/api/devices/{bad_mac}/remove")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "validation_error"
+
+    async def test_invalid_mac_error_message_contains_mac(
+        self,
+        test_client: AsyncClient,
+    ) -> None:
+        """422 error message includes the offending MAC address."""
+        response = await test_client.post("/api/devices/not-a-mac/pair")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "not-a-mac" in data["message"]
+
+    async def test_invalid_mac_error_includes_expected_format(
+        self,
+        test_client: AsyncClient,
+    ) -> None:
+        """422 error message describes the expected MAC format."""
+        response = await test_client.get("/api/devices/AABBCCDDEEFF")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "XX:XX:XX:XX:XX:XX" in data["message"]
