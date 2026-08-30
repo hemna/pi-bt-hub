@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from bt_hub.config import Settings
 
 
@@ -24,6 +26,17 @@ class TestSettings:
             assert settings.port == 9090
         finally:
             del os.environ["BT_HUB_PORT"]
+
+    def test_settings_is_immutable(self) -> None:
+        """Settings is a frozen dataclass — mutation must raise FrozenInstanceError."""
+        settings = Settings()
+        with pytest.raises(AttributeError):
+            settings.host = "1.2.3.4"  # type: ignore[misc]
+
+    def test_settings_is_hashable(self) -> None:
+        """Frozen dataclasses are hashable; useful as dict keys / set members."""
+        settings = Settings()
+        assert hash(settings) is not None
 
 
 class TestBridgeSettings:
