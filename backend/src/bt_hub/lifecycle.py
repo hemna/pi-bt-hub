@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi.templating import Jinja2Templates
+from starlette.templating import Jinja2Templates
 
 if TYPE_CHECKING:
     from bt_hub.config import Settings
@@ -69,28 +69,21 @@ class BtHubServices:
     bluez_mgr: BlueZManager | None = None
 
 
-@dataclass
-class ServiceContainer:
-    """Mutable holder passed to router factories at creation time, populated during lifespan."""
-
-    services: BtHubServices | None = None
-
-
 async def startup_services(settings: Settings) -> BtHubServices:
     """Initialize all application services.
 
     Mirrors the logic from main.py lifespan, extracted for reuse by host apps.
     """
-    from bt_hub.services.bt_bridge_client import BtBridgeClient
     from bt_hub.services.device_store import DeviceStore
     from bt_hub.services.event_bus import EventBus
     from bt_hub.services.log_handler import setup_sse_logging
 
-    # Logging
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    # Logging — only configure if no handlers are attached yet (i.e., not embedded).
+    if not logging.root.handlers:
+        logging.basicConfig(
+            level=getattr(logging, settings.log_level.upper(), logging.INFO),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
     log_handler = setup_sse_logging(
         level=getattr(logging, settings.log_level.upper(), logging.INFO)
     )
@@ -102,16 +95,16 @@ async def startup_services(settings: Settings) -> BtHubServices:
     # Event bus
     bus = EventBus()
 
-    # Bridge client
-    bridge_client = BtBridgeClient(settings.bridge_url if settings.bridge_enabled else None)
-
-    # Bridge proxy + systemd service (only when bridge is enabled)
+    # Bridge client + proxy + systemd service (only when bridge is enabled)
+    bridge_client: BtBridgeClient | None = None
     bridge_proxy: BridgeProxy | None = None
     systemd_service: SystemdService | None = None
     if settings.bridge_enabled:
         from bt_hub.services.bridge_proxy import BridgeProxy
+        from bt_hub.services.bt_bridge_client import BtBridgeClient
         from bt_hub.services.systemd_service import SystemdService
 
+        bridge_client = BtBridgeClient(settings.bridge_url)
         bridge_proxy = BridgeProxy(settings.bridge_url)
         await bridge_proxy.startup()
         systemd_service = SystemdService("bt-bridge.service")

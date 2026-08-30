@@ -49,7 +49,7 @@ class TestBtBridgeClientGetStatus:
         mock_response.status_code = 200
         mock_response.json = lambda: status_data  # sync method, not async
 
-        with patch("bt_hub.services.bt_bridge_client.httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -67,7 +67,7 @@ class TestBtBridgeClientGetStatus:
         mock_response = AsyncMock()
         mock_response.status_code = 500
 
-        with patch("bt_hub.services.bt_bridge_client.httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -81,7 +81,7 @@ class TestBtBridgeClientGetStatus:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_timeout(self) -> None:
-        with patch("bt_hub.services.bt_bridge_client.httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.side_effect = httpx.TimeoutException("timed out")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -95,7 +95,7 @@ class TestBtBridgeClientGetStatus:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_connect_error(self) -> None:
-        with patch("bt_hub.services.bt_bridge_client.httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.side_effect = httpx.ConnectError("connection refused")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -109,7 +109,7 @@ class TestBtBridgeClientGetStatus:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_unexpected_error(self) -> None:
-        with patch("bt_hub.services.bt_bridge_client.httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.side_effect = RuntimeError("unexpected")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

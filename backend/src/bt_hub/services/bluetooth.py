@@ -104,6 +104,7 @@ class BlueZManager:
         self._adapter_path = f"/org/bluez/{adapter_name}"
         self._bus: MessageBus | None = None
         self._is_scanning = False
+        self._scan_lock = asyncio.Lock()
         self._scan_task: asyncio.Task[None] | None = None
         self._hcitool_task: asyncio.Task[None] | None = None
         self._signal_handlers: list[Any] = []
@@ -196,16 +197,19 @@ class BlueZManager:
                 ),
                 timeout=timeout,
             )
-        except TimeoutError:
+        except TimeoutError as exc:
             logger.warning(
                 "D-Bus call %s.%s on %s timed out after %.1fs",
-                interface, method, path, timeout,
+                interface,
+                method,
+                path,
+                timeout,
             )
             raise BluetoothError(
                 error="dbus_timeout",
                 message=f"D-Bus call {method} timed out after {timeout}s",
                 status_code=504,
-            )
+            ) from exc
         except Exception as exc:
             logger.error("D-Bus call %s.%s on %s failed: %s", interface, method, path, exc)
             raise BluetoothError(
@@ -385,9 +389,8 @@ class BlueZManager:
             return
 
         if interface == ADAPTER_INTERFACE and path == self._adapter_path:
-            # Adapter property changed
-            if "Discovering" in changed_props:
-                self._is_scanning = bool(changed_props["Discovering"])
+            # Adapter property changed — do NOT mutate _is_scanning here;
+            # start_discovery/stop_discovery are the sole owners of that flag.
             await self._event_bus.publish(
                 Event(
                     "adapter_changed",
@@ -491,11 +494,14 @@ class BlueZManager:
         try:
             # Check if bt-bridge is active
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "is-active", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "is-active",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            _, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             if proc.returncode != 0:
                 return False  # Not running, nothing to do
 
@@ -503,7 +509,10 @@ class BlueZManager:
             logger.info("Stopping bt-bridge to allow Classic BT discovery...")
             # First send SIGTERM via kill (immediate, doesn't wait)
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "kill", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "kill",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -513,7 +522,10 @@ class BlueZManager:
             for _ in range(10):
                 await asyncio.sleep(0.5)
                 check = await asyncio.create_subprocess_exec(
-                    "sudo", systemctl, "is-active", "bt-bridge.service",
+                    "sudo",
+                    systemctl,
+                    "is-active",
+                    "bt-bridge.service",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -525,7 +537,11 @@ class BlueZManager:
                 # Still alive after 5s — force kill
                 logger.warning("bt-bridge didn't stop gracefully, sending SIGKILL")
                 proc = await asyncio.create_subprocess_exec(
-                    "sudo", systemctl, "kill", "--signal=SIGKILL", "bt-bridge.service",
+                    "sudo",
+                    systemctl,
+                    "kill",
+                    "--signal=SIGKILL",
+                    "bt-bridge.service",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -549,7 +565,10 @@ class BlueZManager:
         try:
             logger.info("Restarting bt-bridge after scan...")
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "start", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "start",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -576,13 +595,13 @@ class BlueZManager:
         try:
             logger.info("Running hcitool scan for Classic BR/EDR devices...")
             proc = await asyncio.create_subprocess_exec(
-                hcitool, "scan", "--flush",
+                hcitool,
+                "scan",
+                "--flush",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=float(duration + 5)
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=float(duration + 5))
 
             if proc.returncode != 0:
                 logger.debug(
@@ -623,7 +642,7 @@ class BlueZManager:
                         )
                     )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("hcitool scan timed out")
         except asyncio.CancelledError:
             pass
@@ -632,6 +651,11 @@ class BlueZManager:
 
     async def start_discovery(self, duration_seconds: int = 10) -> None:
         """Start Bluetooth discovery, auto-stop after duration_seconds."""
+        async with self._scan_lock:
+            await self._start_discovery_locked(duration_seconds)
+
+    async def _start_discovery_locked(self, duration_seconds: int = 10) -> None:
+        """Internal: start discovery — must be called with _scan_lock held."""
         if self._is_scanning:
             raise AlreadyScanningError()
 
@@ -706,6 +730,8 @@ class BlueZManager:
         self._scan_task = asyncio.create_task(self._auto_stop_discovery(max(duration_seconds, 15)))
 
     async def _auto_stop_discovery(self, duration: int) -> None:
+        # Note: called from a task launched inside _start_discovery_locked (lock already
+        # released by the time the task body runs), so we can acquire the lock here.
         """Wait and then stop discovery."""
         try:
             await asyncio.sleep(duration)
@@ -737,6 +763,11 @@ class BlueZManager:
 
     async def stop_discovery(self) -> None:
         """Stop Bluetooth discovery."""
+        async with self._scan_lock:
+            await self._stop_discovery_locked()
+
+    async def _stop_discovery_locked(self) -> None:
+        """Internal: stop discovery — must be called with _scan_lock held."""
         if self._scan_task and not self._scan_task.done():
             self._scan_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -748,7 +779,7 @@ class BlueZManager:
         if self._hcitool_task and not self._hcitool_task.done():
             try:
                 await asyncio.wait_for(self._hcitool_task, timeout=15.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 self._hcitool_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._hcitool_task
@@ -771,6 +802,7 @@ class BlueZManager:
             if self._bridge_was_running:
                 await self._restart_bridge_after_scan()
                 self._bridge_was_running = False
+
     # --- Device operations ---
 
     async def get_all_device_states(self) -> dict[str, dict[str, Any]]:
@@ -874,7 +906,7 @@ class BlueZManager:
                     )
 
             if props is None:
-                raise DeviceNotFoundError(mac)
+                raise DeviceNotFoundError(mac) from None
 
         if props.get("Paired", False):
             raise AlreadyPairedError()

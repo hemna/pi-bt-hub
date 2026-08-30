@@ -1,11 +1,10 @@
-"""Pydantic models for Bluetooth devices and adapter state."""
+"""Dataclasses for Bluetooth devices and adapter state."""
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from enum import StrEnum
-
-from pydantic import BaseModel, Field, field_validator
 
 
 class DeviceType(StrEnum):
@@ -46,7 +45,8 @@ def validate_mac_address(value: str) -> str:
     return normalized
 
 
-class DeviceRuntimeState(BaseModel):
+@dataclass
+class DeviceRuntimeState:
     """Live Bluetooth device state from BlueZ. No persistence."""
 
     mac_address: str
@@ -56,16 +56,14 @@ class DeviceRuntimeState(BaseModel):
     connected: bool = False
     trusted: bool = False
     rssi: int | None = None
-    connection_state: ConnectionState = ConnectionState.DISCONNECTED
+    connection_state: ConnectionState = field(default=ConnectionState.DISCONNECTED)
 
-    @field_validator("mac_address")
-    @classmethod
-    def normalize_mac(cls, v: str) -> str:
-        """Normalize MAC address to uppercase."""
-        return validate_mac_address(v)
+    def __post_init__(self) -> None:
+        self.mac_address = validate_mac_address(self.mac_address)
 
 
-class AdapterState(BaseModel):
+@dataclass
+class AdapterState:
     """Runtime-only model for the local Bluetooth adapter state."""
 
     address: str
@@ -75,34 +73,32 @@ class AdapterState(BaseModel):
     discoverable: bool
 
 
-class PowerRequest(BaseModel):
-    """Request body for toggling adapter power."""
-
-    powered: bool
-
-
-class ScanResponse(BaseModel):
+@dataclass
+class ScanResponse:
     """Response for scan start/stop operations."""
 
     status: str
     duration_seconds: int | None = None
 
 
-class DeviceActionResponse(BaseModel):
+@dataclass
+class DeviceActionResponse:
     """Response for device action operations (pair, connect, etc.)."""
 
     mac_address: str
     status: str
 
 
-class DeviceListResponse(BaseModel):
+@dataclass
+class DeviceListResponse:
     """Response for device list endpoint."""
 
     devices: list[DeviceRuntimeState]
     count: int
 
 
-class ErrorResponse(BaseModel):
+@dataclass
+class ErrorResponse:
     """Consistent error response format per API contract."""
 
     error: str

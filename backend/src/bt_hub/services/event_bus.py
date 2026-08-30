@@ -54,7 +54,7 @@ class EventBus:
 
     async def publish(self, event: Event) -> None:
         """Broadcast an event to all subscribers. Drops if queue is full."""
-        for sub_id, queue in self._subscribers.items():
+        for sub_id, queue in list(self._subscribers.items()):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:

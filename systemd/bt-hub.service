@@ -23,6 +23,7 @@ Group=pi
 SupplementaryGroups=bluetooth
 
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONOPTIMIZE=1
 Environment=PYTHONPATH=/home/pi/pi-bt-hub/src
 Environment=BT_HUB_DB_PATH=/home/pi/pi-bt-hub/data/bt_hub.db
 Environment=BT_HUB_LOG_LEVEL=INFO

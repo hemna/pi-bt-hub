@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,8 @@ class BridgeProxy:
         logger.info("BridgeProxy stopped")
 
     def _ensure_client(self) -> httpx.AsyncClient:
-        assert self._client is not None, "BridgeProxy not started"
+        if self._client is None:
+            raise RuntimeError("BridgeProxy not started — call startup() first")
         return self._client
 
     async def _get(self, path: str) -> dict[str, Any] | None:

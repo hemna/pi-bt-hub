@@ -41,11 +41,7 @@ def event_bus() -> EventBus:
 
 @pytest.fixture
 def mock_bluetooth_manager() -> MagicMock:
-    """Provide a mock BlueZ manager for testing.
-
-    Returns a MagicMock that simulates BlueZManager behavior.
-    All D-Bus calls return reasonable defaults.
-    """
+    """Provide a mock BlueZ manager for testing."""
     manager = MagicMock()
     manager.get_adapter_state = AsyncMock(
         return_value=AdapterState(
@@ -94,32 +90,37 @@ async def test_client(
     mock_bluetooth_manager: MagicMock,
     mock_bt_bridge_client: BtBridgeClient,
 ) -> AsyncIterator[AsyncClient]:
-    """Provide an async HTTP test client with mocked dependencies."""
-    from fastapi.templating import Jinja2Templates
+    """Provide an async HTTP test client with mocked dependencies.
 
-    # Import main first to avoid circular import (main.create_app imports adapter.router)
-    from bt_hub.main import (
-        create_app,
-        get_device_store,
-        get_event_bus,
+    httpx ASGITransport does not invoke the app lifespan, so we set
+    the deps singletons directly before creating the app.
+    """
+    from starlette.templating import Jinja2Templates
+
+    from bt_hub.config import get_settings
+    from bt_hub.deps import (
+        set_bluetooth_manager,
+        set_bt_bridge_client,
+        set_device_store,
+        set_event_bus,
+        set_templates,
     )
+    from bt_hub.main import create_app
 
-    from bt_hub.deps import get_bluetooth_manager, get_bt_bridge_client, get_templates, set_templates
-
-    # Initialize templates before creating the app
     template_dir = Path(__file__).parent.parent / "backend" / "src" / "bt_hub" / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
+
+    # Set singletons directly — lifespan is not triggered by ASGITransport
+    set_device_store(device_store)
+    set_event_bus(event_bus)
+    set_bluetooth_manager(mock_bluetooth_manager)
+    set_bt_bridge_client(mock_bt_bridge_client)
     set_templates(templates)
 
+    # Clear settings cache so each test reads env fresh
+    get_settings.cache_clear()
+
     app = create_app()
-
-    # Override dependencies
-    app.dependency_overrides[get_device_store] = lambda: device_store
-    app.dependency_overrides[get_event_bus] = lambda: event_bus
-    app.dependency_overrides[get_bluetooth_manager] = lambda: mock_bluetooth_manager
-    app.dependency_overrides[get_bt_bridge_client] = lambda: mock_bt_bridge_client
-    app.dependency_overrides[get_templates] = lambda: templates
-
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

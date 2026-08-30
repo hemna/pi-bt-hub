@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bt_hub.config import Settings
-from bt_hub.lifecycle import BtHubServices, ServiceContainer, shutdown_services, startup_services
+from bt_hub.lifecycle import BtHubServices, shutdown_services, startup_services
 
 
 class TestBtHubServices:
@@ -27,20 +27,6 @@ class TestBtHubServices:
         assert services.systemd_service is None
         assert services.log_handler is None
         assert services.bluez_mgr is None
-
-
-class TestServiceContainer:
-    """Tests for the ServiceContainer class."""
-
-    def test_default_none(self) -> None:
-        container = ServiceContainer()
-        assert container.services is None
-
-    def test_set_services(self) -> None:
-        container = ServiceContainer()
-        services = MagicMock(spec=BtHubServices)
-        container.services = services
-        assert container.services is services
 
 
 class TestStartupServices:
@@ -62,7 +48,7 @@ class TestStartupServices:
             # The key is that startup doesn't raise
             assert services.device_store is not None
             assert services.event_bus is not None
-            assert services.bt_bridge_client is not None
+            assert services.bt_bridge_client is None
             assert services.bridge_proxy is None
             assert services.systemd_service is None
         finally:
@@ -74,7 +60,7 @@ class TestStartupServices:
         try:
             assert services.bridge_proxy is None
             assert services.systemd_service is None
-            assert services.bt_bridge_client is not None
+            assert services.bt_bridge_client is None
         finally:
             await services.device_store.close()
 
@@ -89,6 +75,27 @@ class TestStartupServices:
             assert "theme" in result
         finally:
             await services.device_store.close()
+
+    async def test_basicconfig_skipped_when_handlers_present(
+        self, settings: Settings, tmp_path: Path
+    ) -> None:
+        """startup_services must not call basicConfig when handlers already exist.
+
+        This prevents bt-hub from clobbering a host app's logging setup when
+        embedded (e.g. digipi-web).
+        """
+        import logging
+        from unittest.mock import patch
+
+        sentinel = logging.StreamHandler()
+        logging.root.addHandler(sentinel)
+        try:
+            with patch("logging.basicConfig") as mock_bc:
+                services = await startup_services(settings)
+                await services.device_store.close()
+            mock_bc.assert_not_called()
+        finally:
+            logging.root.removeHandler(sentinel)
 
 
 class TestShutdownServices:

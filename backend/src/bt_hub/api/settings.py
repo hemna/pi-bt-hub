@@ -2,44 +2,46 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.templating import Jinja2Templates  # noqa: TC002
-
-from bt_hub.deps import get_device_store, get_templates, render_template
-from bt_hub.models.settings import AppSettings, AppSettingsUpdate
-from bt_hub.services.device_store import DeviceStore  # noqa: TC001
+from starlette.responses import JSONResponse
+from starlette.routing import Route, Router
 
 if TYPE_CHECKING:
-    from bt_hub.lifecycle import ServiceContainer
+    from starlette.requests import Request
+
+from bt_hub.deps import get_device_store, render_template
+from bt_hub.models.settings import AppSettings, AppSettingsUpdate
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
 
-
-# --- JSON API endpoints ---
-
-
-@router.get("/api/settings", response_model=AppSettings)
-async def get_settings(
-    store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> AppSettings:
+async def get_settings(request: Request) -> JSONResponse:
     """Return the current application settings."""
+    store = get_device_store()
     row = await store.get_settings()
-    return AppSettings.model_validate(row)
+    return JSONResponse(dataclasses.asdict(AppSettings(**row)))
 
 
-@router.patch("/api/settings", response_model=AppSettings)
-async def update_settings(
-    body: AppSettingsUpdate,
-    store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> AppSettings:
+async def update_settings(request: Request) -> JSONResponse:
     """Update application settings. Only provided fields are changed."""
+    store = get_device_store()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"error": "invalid_json", "message": "Request body is not valid JSON"},
+            status_code=400,
+        )
+
+    try:
+        body = AppSettingsUpdate(**{k: v for k, v in data.items() if v is not None})
+    except ValueError as e:
+        return JSONResponse({"error": "validation_error", "message": str(e)}, status_code=422)
     update_fields: dict[str, Any] = {}
-    logger.info("Updating settings: %s", body.model_dump(exclude_none=True))
+    logger.info("Updating settings: %s", data)
 
     if body.theme is not None:
         update_fields["theme"] = body.theme.value
@@ -51,74 +53,21 @@ async def update_settings(
         update_fields["adapter_name"] = body.adapter_name
 
     row = await store.update_settings(**update_fields)
-    return AppSettings.model_validate(row)
+    return JSONResponse(dataclasses.asdict(AppSettings(**row)))
 
 
-# --- HTML page endpoint ---
-
-
-@router.get("/settings")
-async def settings_page(
-    request: Request,
-    templates: Annotated[Jinja2Templates, Depends(get_templates)],
-    store: Annotated[DeviceStore, Depends(get_device_store)],
-) -> object:
+async def settings_page(request: Request) -> object:
     """Serve the settings page."""
+    store = get_device_store()
     row = await store.get_settings()
-    settings = AppSettings.model_validate(row)
+    settings = AppSettings(**row)
     return render_template("settings.html", request, settings=settings)
 
 
-# --- Factory functions for library usage ---
-
-
-def create_api_router(container: ServiceContainer) -> APIRouter:
-    """Create an APIRouter with settings API endpoints using the ServiceContainer."""
-    api = APIRouter()
-
-    def _get_store() -> DeviceStore:
-        assert container.services is not None
-        return container.services.device_store
-
-    @api.get("/api/settings", response_model=AppSettings)
-    async def get_settings_factory() -> AppSettings:
-        row = await _get_store().get_settings()
-        return AppSettings.model_validate(row)
-
-    @api.patch("/api/settings", response_model=AppSettings)
-    async def update_settings_factory(body: AppSettingsUpdate) -> AppSettings:
-        store = _get_store()
-        update_fields: dict[str, Any] = {}
-        if body.theme is not None:
-            update_fields["theme"] = body.theme.value
-        if body.auto_connect_favorites is not None:
-            update_fields["auto_connect_favorites"] = body.auto_connect_favorites
-        if body.scan_duration_seconds is not None:
-            update_fields["scan_duration_seconds"] = body.scan_duration_seconds
-        if body.adapter_name is not None:
-            update_fields["adapter_name"] = body.adapter_name
-        row = await store.update_settings(**update_fields)
-        return AppSettings.model_validate(row)
-
-    return api
-
-
-def create_page_router(
-    container: ServiceContainer,
-    templates: Jinja2Templates,
-    active_page_prefix: str = "bluetooth",
-) -> APIRouter:
-    """Create an APIRouter with settings page endpoint using the ServiceContainer."""
-    pages = APIRouter()
-
-    @pages.get("/settings")
-    async def settings_page_factory(request: Request) -> object:
-        assert container.services is not None
-        store = container.services.device_store
-        row = await store.get_settings()
-        settings = AppSettings.model_validate(row)
-        return render_template(
-            "settings.html", request, settings=settings, active_page=active_page_prefix
-        )
-
-    return pages
+router = Router(
+    routes=[
+        Route("/api/settings", get_settings, methods=["GET"]),
+        Route("/api/settings", update_settings, methods=["PATCH"]),
+        Route("/settings", settings_page, methods=["GET"]),
+    ]
+)

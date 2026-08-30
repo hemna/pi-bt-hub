@@ -5,7 +5,7 @@ Defines shared exceptions and error handlers used across all routers.
 
 from __future__ import annotations
 
-from fastapi import HTTPException
+from starlette.exceptions import HTTPException
 
 
 class BluetoothError(HTTPException):
