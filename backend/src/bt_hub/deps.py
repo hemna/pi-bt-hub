@@ -63,7 +63,8 @@ def render_template(
 
 
 def get_device_store() -> DeviceStore:
-    assert _device_store is not None
+    if _device_store is None:
+        raise RuntimeError("DeviceStore not initialized — lifespan not completed")
     return _device_store
 
 
@@ -73,7 +74,8 @@ def set_device_store(store: DeviceStore) -> None:
 
 
 def get_event_bus() -> EventBus:
-    assert _event_bus is not None
+    if _event_bus is None:
+        raise RuntimeError("EventBus not initialized — lifespan not completed")
     return _event_bus
 
 
@@ -83,7 +85,8 @@ def set_event_bus(bus: EventBus) -> None:
 
 
 def get_templates() -> Jinja2Templates:
-    assert _templates is not None
+    if _templates is None:
+        raise RuntimeError("Jinja2Templates not initialized — lifespan not completed")
     return _templates
 
 
@@ -98,7 +101,8 @@ def set_templates(templates: Jinja2Templates) -> None:
 
 
 def get_bt_bridge_client() -> BtBridgeClient:
-    assert _bt_bridge_client is not None
+    if _bt_bridge_client is None:
+        raise RuntimeError("BtBridgeClient not initialized — lifespan not completed")
     return _bt_bridge_client
 
 
@@ -108,7 +112,8 @@ def set_bt_bridge_client(client: BtBridgeClient) -> None:
 
 
 def get_bridge_proxy() -> BridgeProxy:
-    assert _bridge_proxy is not None
+    if _bridge_proxy is None:
+        raise RuntimeError("BridgeProxy not initialized — lifespan not completed")
     return _bridge_proxy
 
 
@@ -118,7 +123,8 @@ def set_bridge_proxy(proxy: BridgeProxy) -> None:
 
 
 def get_bridge_service() -> SystemdService:
-    assert _bridge_service is not None
+    if _bridge_service is None:
+        raise RuntimeError("SystemdService not initialized — lifespan not completed")
     return _bridge_service
 
 
