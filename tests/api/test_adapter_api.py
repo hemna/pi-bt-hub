@@ -94,6 +94,48 @@ class TestScanStart:
         data = response.json()
         assert data["error"] == "already_scanning"
 
+    async def test_start_scan_uses_explicit_duration(
+        self, test_client: AsyncClient, mock_bluetooth_manager: MagicMock
+    ) -> None:
+        """POST /api/scan/start?duration=20 passes duration to start_discovery."""
+        response = await test_client.post("/api/scan/start?duration=20")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_seconds"] == 20
+        mock_bluetooth_manager.start_discovery.assert_awaited_once_with(duration_seconds=20)
+
+    async def test_start_scan_clamps_duration_above_max(
+        self, test_client: AsyncClient, mock_bluetooth_manager: MagicMock
+    ) -> None:
+        """POST /api/scan/start?duration=9999 clamps to 300."""
+        response = await test_client.post("/api/scan/start?duration=9999")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_seconds"] == 300
+        mock_bluetooth_manager.start_discovery.assert_awaited_once_with(duration_seconds=300)
+
+    async def test_start_scan_clamps_duration_below_min(
+        self, test_client: AsyncClient, mock_bluetooth_manager: MagicMock
+    ) -> None:
+        """POST /api/scan/start?duration=1 clamps to 5."""
+        response = await test_client.post("/api/scan/start?duration=1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_seconds"] == 5
+
+    async def test_start_scan_returns_400_for_non_integer_duration(
+        self, test_client: AsyncClient, mock_bluetooth_manager: MagicMock
+    ) -> None:
+        """POST /api/scan/start?duration=abc returns 400."""
+        response = await test_client.post("/api/scan/start?duration=abc")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["error"] == "invalid_duration"
+
 
 class TestScanStop:
     """Tests for POST /api/scan/stop."""
