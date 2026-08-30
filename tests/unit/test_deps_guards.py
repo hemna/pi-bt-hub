@@ -13,15 +13,15 @@ import pytest
 
 import bt_hub.deps as deps_module
 from bt_hub.deps import (
+    get_bt_bridge_client,
     get_bridge_proxy,
     get_bridge_service,
-    get_bt_bridge_client,
     get_device_store,
     get_event_bus,
     get_templates,
+    set_bt_bridge_client,
     set_bridge_proxy,
     set_bridge_service,
-    set_bt_bridge_client,
     set_device_store,
     set_event_bus,
     set_templates,
@@ -50,7 +50,6 @@ def reset_deps() -> None:
 # ---------------------------------------------------------------------------
 # Each getter raises RuntimeError (not AssertionError) when global is None
 # ---------------------------------------------------------------------------
-
 
 def test_get_device_store_raises_runtime_error_when_none() -> None:
     with pytest.raises(RuntimeError, match="DeviceStore not initialized"):
@@ -86,7 +85,6 @@ def test_get_bridge_service_raises_runtime_error_when_none() -> None:
 # Guards raise RuntimeError, not AssertionError (would survive -O flag)
 # ---------------------------------------------------------------------------
 
-
 def test_get_device_store_raises_not_assert_error() -> None:
     exc = None
     try:
@@ -100,7 +98,6 @@ def test_get_device_store_raises_not_assert_error() -> None:
 # ---------------------------------------------------------------------------
 # Each getter returns the value once set via set_*
 # ---------------------------------------------------------------------------
-
 
 def test_get_device_store_returns_value_when_set() -> None:
     mock = MagicMock()
@@ -143,7 +140,6 @@ def test_get_bridge_service_returns_value_when_set() -> None:
 # — ensure that behaviour is preserved
 # ---------------------------------------------------------------------------
 
-
 def test_get_bluetooth_manager_raises_adapter_unavailable_when_none() -> None:
     from bt_hub.api import AdapterUnavailableError
     from bt_hub.deps import get_bluetooth_manager
@@ -161,6 +157,4 @@ def test_get_bluetooth_manager_does_not_raise_assert_error() -> None:
     except AdapterUnavailableError:
         pass  # expected
     except AssertionError:
-        pytest.fail(
-            "get_bluetooth_manager raised AssertionError instead of AdapterUnavailableError"
-        )
+        pytest.fail("get_bluetooth_manager raised AssertionError instead of AdapterUnavailableError")
