@@ -13,15 +13,15 @@ import pytest
 
 import bt_hub.deps as deps_module
 from bt_hub.deps import (
-    get_bt_bridge_client,
     get_bridge_proxy,
     get_bridge_service,
+    get_bt_bridge_client,
     get_device_store,
     get_event_bus,
     get_templates,
-    set_bt_bridge_client,
     set_bridge_proxy,
     set_bridge_service,
+    set_bt_bridge_client,
     set_device_store,
     set_event_bus,
     set_templates,
@@ -157,4 +157,6 @@ def test_get_bluetooth_manager_does_not_raise_assert_error() -> None:
     except AdapterUnavailableError:
         pass  # expected
     except AssertionError:
-        pytest.fail("get_bluetooth_manager raised AssertionError instead of AdapterUnavailableError")
+        pytest.fail(
+            "get_bluetooth_manager raised AssertionError instead of AdapterUnavailableError"
+        )
