@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 
 
-@dataclass
+@dataclass(frozen=True)
 class Settings:
     """Application settings loaded from environment variables.
 
