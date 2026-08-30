@@ -5,12 +5,14 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import logging
+from typing import TYPE_CHECKING
 
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
 
-from bt_hub.api import AdapterUnavailableError
+if TYPE_CHECKING:
+    from starlette.requests import Request
+
 from bt_hub.config import get_settings
 from bt_hub.deps import (
     get_bluetooth_manager,
@@ -78,7 +80,8 @@ async def start_scan(request: Request) -> object:
 
     if "hx-request" in request.headers:
         return render_template("partials/scan_progress.html", request, duration=duration)
-    return JSONResponse(dataclasses.asdict(ScanResponse(status="scanning", duration_seconds=duration)))
+    resp = ScanResponse(status="scanning", duration_seconds=duration)
+    return JSONResponse(dataclasses.asdict(resp))
 
 
 async def stop_scan(request: Request) -> object:

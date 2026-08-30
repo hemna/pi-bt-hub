@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from starlette.routing import Route, Router
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 from bt_hub.deps import get_bridge_proxy, get_bridge_service, render_template
 
@@ -161,7 +163,9 @@ async def bridge_service_install(request: Request) -> JSONResponse | HTMLRespons
     result = await service.install_bt_bridge()
     if "hx-request" in request.headers:
         status_class = "alert--success" if result.success else "alert--error"
-        reload_hint = "<br><small>Page will reload in 2 seconds...</small>" if result.success else ""
+        reload_hint = (
+            "<br><small>Page will reload in 2 seconds...</small>" if result.success else ""
+        )
         html = (
             f'<div id="install-result-banner" class="alert {status_class}"'
             f' style="margin-bottom: 1rem;">'
@@ -191,7 +195,8 @@ async def bridge_tnc_get(request: Request) -> JSONResponse:
 
 async def bridge_tnc_update(request: Request) -> JSONResponse:
     data = await request.json()
-    return _proxy_response(await get_bridge_proxy().update_tnc(request.path_params["address"], data))
+    address = request.path_params["address"]
+    return _proxy_response(await get_bridge_proxy().update_tnc(address, data))
 
 
 async def bridge_tnc_delete(request: Request) -> JSONResponse:

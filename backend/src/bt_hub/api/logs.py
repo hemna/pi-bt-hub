@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import TYPE_CHECKING
 
-from starlette.requests import Request
 from starlette.responses import StreamingResponse
 from starlette.routing import Route, Router
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 from bt_hub.deps import render_template
 from bt_hub.services.log_handler import get_sse_log_handler

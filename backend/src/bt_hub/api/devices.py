@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from typing import TYPE_CHECKING
 
-from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route, Router
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 from bt_hub.api import (
     BluetoothError,
@@ -93,7 +96,9 @@ async def list_devices(request: Request) -> JSONResponse:
 
     devices = [_build_runtime_state(mac, live) for mac, live in live_states.items()]
     devices.sort(key=lambda d: (not d.connected, not d.paired, (d.name or d.mac_address).lower()))
-    return JSONResponse({"devices": [dataclasses.asdict(d) for d in devices], "count": len(devices)})
+    return JSONResponse(
+        {"devices": [dataclasses.asdict(d) for d in devices], "count": len(devices)}
+    )
 
 
 async def get_device(request: Request) -> JSONResponse:
@@ -149,7 +154,9 @@ async def connect_device(request: Request) -> object:
     htmx_resp = _htmx_device_response(request, device)
     if htmx_resp is not None:
         return htmx_resp
-    return JSONResponse(dataclasses.asdict(DeviceActionResponse(mac_address=mac, status="connected")))
+    return JSONResponse(
+        dataclasses.asdict(DeviceActionResponse(mac_address=mac, status="connected"))
+    )
 
 
 async def disconnect_device(request: Request) -> object:
@@ -168,7 +175,9 @@ async def disconnect_device(request: Request) -> object:
     htmx_resp = _htmx_device_response(request, device)
     if htmx_resp is not None:
         return htmx_resp
-    return JSONResponse(dataclasses.asdict(DeviceActionResponse(mac_address=mac, status="disconnected")))
+    return JSONResponse(
+        dataclasses.asdict(DeviceActionResponse(mac_address=mac, status="disconnected"))
+    )
 
 
 async def trust_device(request: Request) -> object:

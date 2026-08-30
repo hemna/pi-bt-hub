@@ -6,12 +6,15 @@ import asyncio
 import contextlib
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from starlette.routing import Router, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bt_hub.deps import get_event_bus
-from bt_hub.services.event_bus import Event
+
+if TYPE_CHECKING:
+    from bt_hub.services.event_bus import Event
 
 logger = logging.getLogger(__name__)
 

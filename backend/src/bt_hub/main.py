@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
@@ -31,6 +30,8 @@ from bt_hub.lifecycle import create_templates, shutdown_services, startup_servic
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 

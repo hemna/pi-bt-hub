@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 from bt_hub.deps import get_device_store, render_template
 from bt_hub.models.settings import AppSettings, AppSettingsUpdate

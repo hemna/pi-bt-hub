@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
-from typing import Literal
-
 from dataclasses import dataclass
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class SystemdService:
                 stdout.decode("utf-8", errors="replace").strip(),
                 stderr.decode("utf-8", errors="replace").strip(),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Command timed out: %s", " ".join(args))
             return (-1, "", "Command timed out")
         except Exception as e:
@@ -92,7 +92,7 @@ class SystemdService:
             )
 
         # Check if service is active
-        exit_code, stdout, stderr = await self._run_command(
+        exit_code, stdout, _ = await self._run_command(
             "sudo", self._systemctl, "is-active", self.service_name
         )
 
@@ -120,7 +120,7 @@ class SystemdService:
                 sub_state = sub_stdout
 
             # Check if enabled
-            en_code, en_stdout, _ = await self._run_command(
+            _, en_stdout, _ = await self._run_command(
                 "sudo", self._systemctl, "is-enabled", self.service_name
             )
             if en_stdout in ("enabled", "enabled-runtime"):
@@ -338,10 +338,8 @@ exec bash scripts/install.sh
             )
         finally:
             # Clean up wrapper script
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(wrapper_script)
-            except OSError:
-                pass
 
         combined_output = stdout
         if stderr:
