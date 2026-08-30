@@ -6,7 +6,7 @@ Device history has been removed — the app now shows only live BlueZ discovery 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import aiosqlite
 
@@ -67,21 +67,34 @@ class DeviceStore:
 
     async def get_settings(self) -> dict[str, object]:
         """Return the current application settings."""
-        async with self.db.execute(
-            "SELECT theme, auto_connect_favorites, scan_duration_seconds, adapter_name "
-            "FROM app_settings WHERE id = 1"
-        ) as cursor:
-            row = await cursor.fetchone()
-            if row is None:
-                return {
-                    "theme": "light",
-                    "auto_connect_favorites": False,
-                    "scan_duration_seconds": 10,
-                    "adapter_name": None,
-                }
-            result = dict(row)
-            result["auto_connect_favorites"] = bool(result["auto_connect_favorites"])
-            return result
+        try:
+            async with self.db.execute(
+                "SELECT theme, auto_connect_favorites, scan_duration_seconds, adapter_name "
+                "FROM app_settings WHERE id = 1"
+            ) as cursor:
+                row = await cursor.fetchone()
+        except aiosqlite.Error as exc:
+            logger.error("Failed to read settings: %s", exc)
+            raise RuntimeError(f"Database error reading settings: {exc}") from exc
+
+        if row is None:
+            return {
+                "theme": "light",
+                "auto_connect_favorites": False,
+                "scan_duration_seconds": 10,
+                "adapter_name": None,
+            }
+        result = dict(row)
+        result["auto_connect_favorites"] = bool(result["auto_connect_favorites"])
+        return result
+
+    #: Mapping of Python keyword → SQL column name (allowlist).
+    _SETTINGS_COLUMNS: ClassVar[dict[str, str]] = {
+        "theme": "theme",
+        "auto_connect_favorites": "auto_connect_favorites",
+        "scan_duration_seconds": "scan_duration_seconds",
+        "adapter_name": "adapter_name",
+    }
 
     async def update_settings(
         self,
@@ -92,25 +105,29 @@ class DeviceStore:
         adapter_name: str | None = None,
     ) -> dict[str, object]:
         """Update application settings. Only provided fields are changed."""
+        kwargs: dict[str, object] = {
+            "theme": theme,
+            "auto_connect_favorites": auto_connect_favorites,
+            "scan_duration_seconds": scan_duration_seconds,
+            "adapter_name": adapter_name,
+        }
         updates: list[str] = []
         params: list[object] = []
 
-        if theme is not None:
-            updates.append("theme = ?")
-            params.append(theme)
-        if auto_connect_favorites is not None:
-            updates.append("auto_connect_favorites = ?")
-            params.append(int(auto_connect_favorites))
-        if scan_duration_seconds is not None:
-            updates.append("scan_duration_seconds = ?")
-            params.append(scan_duration_seconds)
-        if adapter_name is not None:
-            updates.append("adapter_name = ?")
-            params.append(adapter_name)
+        for key, value in kwargs.items():
+            if value is None:
+                continue
+            col = self._SETTINGS_COLUMNS[key]  # safe: key is always one of the four above
+            updates.append(f"{col} = ?")
+            params.append(int(value) if key == "auto_connect_favorites" else value)
 
         if updates:
             query = f"UPDATE app_settings SET {', '.join(updates)} WHERE id = 1"
-            await self.db.execute(query, params)
-            await self.db.commit()
+            try:
+                await self.db.execute(query, params)
+                await self.db.commit()
+            except aiosqlite.Error as exc:
+                logger.error("Failed to update settings: %s", exc)
+                raise RuntimeError(f"Database error updating settings: {exc}") from exc
 
         return await self.get_settings()
