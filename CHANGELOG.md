@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-30
+
 ### Fixed
 
 - **Issue #1** — Replace `assert` guards with `RuntimeError` in `deps.py` and `bridge_proxy.py`. Guards that used bare `assert` statements now raise `RuntimeError` with a descriptive message, so they work correctly even when Python optimisation (`-O`) is enabled.
@@ -12,6 +14,10 @@
 - **Issue #8** — `PATCH /api/settings` returns HTTP 400 `{"error": "invalid_json"}` for malformed request bodies instead of silently ignoring them.
 - **Issue #9** — `POST /api/scan/start` validates the `duration` query parameter: non-integer values return 400; integer values are clamped to the range `[5, 300]` seconds.
 - **Issue #12** — `startup_services` now guards `logging.basicConfig` behind `if not logging.root.handlers`, so bt-hub no longer clobbers a host application's logging setup when used as an embedded library.
+
+### Tests
+
+- **Issue #11** — Added API-level tests verifying all seven device action endpoints (`GET /api/devices/{mac}`, `/pair`, `/connect`, `/disconnect`, `/trust`, `/untrust`, `/remove`) return HTTP 422 with `{"error": "validation_error"}` for malformed MAC addresses. Parametrized over six invalid MAC formats.
 
 ## [1.1.0] - 2026-05-06
 
