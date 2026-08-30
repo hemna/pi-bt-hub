@@ -104,6 +104,7 @@ class BlueZManager:
         self._adapter_path = f"/org/bluez/{adapter_name}"
         self._bus: MessageBus | None = None
         self._is_scanning = False
+        self._scan_lock = asyncio.Lock()
         self._scan_task: asyncio.Task[None] | None = None
         self._hcitool_task: asyncio.Task[None] | None = None
         self._signal_handlers: list[Any] = []
@@ -388,9 +389,8 @@ class BlueZManager:
             return
 
         if interface == ADAPTER_INTERFACE and path == self._adapter_path:
-            # Adapter property changed
-            if "Discovering" in changed_props:
-                self._is_scanning = bool(changed_props["Discovering"])
+            # Adapter property changed — do NOT mutate _is_scanning here;
+            # start_discovery/stop_discovery are the sole owners of that flag.
             await self._event_bus.publish(
                 Event(
                     "adapter_changed",
@@ -651,6 +651,11 @@ class BlueZManager:
 
     async def start_discovery(self, duration_seconds: int = 10) -> None:
         """Start Bluetooth discovery, auto-stop after duration_seconds."""
+        async with self._scan_lock:
+            await self._start_discovery_locked(duration_seconds)
+
+    async def _start_discovery_locked(self, duration_seconds: int = 10) -> None:
+        """Internal: start discovery — must be called with _scan_lock held."""
         if self._is_scanning:
             raise AlreadyScanningError()
 
@@ -725,6 +730,8 @@ class BlueZManager:
         self._scan_task = asyncio.create_task(self._auto_stop_discovery(max(duration_seconds, 15)))
 
     async def _auto_stop_discovery(self, duration: int) -> None:
+        # Note: called from a task launched inside _start_discovery_locked (lock already
+        # released by the time the task body runs), so we can acquire the lock here.
         """Wait and then stop discovery."""
         try:
             await asyncio.sleep(duration)
@@ -756,6 +763,11 @@ class BlueZManager:
 
     async def stop_discovery(self) -> None:
         """Stop Bluetooth discovery."""
+        async with self._scan_lock:
+            await self._stop_discovery_locked()
+
+    async def _stop_discovery_locked(self) -> None:
+        """Internal: stop discovery — must be called with _scan_lock held."""
         if self._scan_task and not self._scan_task.done():
             self._scan_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
