@@ -71,3 +71,17 @@ class TestUpdateSettings:
         response = await test_client.patch("/api/settings", json={"theme": "neon"})
 
         assert response.status_code == 422
+
+    async def test_malformed_json_returns_400(
+        self, test_client: AsyncClient, device_store: DeviceStore
+    ) -> None:
+        """PATCH /api/settings returns 400 when body is not valid JSON."""
+        response = await test_client.patch(
+            "/api/settings",
+            content=b"not-json{{{",
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["error"] == "invalid_json"
