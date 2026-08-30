@@ -9,10 +9,9 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any
 
-from starlette.requests import Request
-from starlette.responses import Response
-
 if TYPE_CHECKING:
+    from starlette.requests import Request
+    from starlette.responses import Response
     from starlette.templating import Jinja2Templates
 
     from bt_hub.services.bluetooth import BlueZManager

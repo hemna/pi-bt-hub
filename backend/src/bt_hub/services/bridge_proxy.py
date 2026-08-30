@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +27,6 @@ class BridgeProxy:
 
     async def startup(self) -> None:
         """Create the persistent HTTP client."""
-        import httpx
-
         self._client = httpx.AsyncClient(
             base_url=self._bridge_url,
             timeout=self._timeout,
@@ -39,13 +41,12 @@ class BridgeProxy:
         logger.info("BridgeProxy stopped")
 
     def _ensure_client(self) -> httpx.AsyncClient:
-        assert self._client is not None, "BridgeProxy not started"
+        if self._client is None:
+            raise RuntimeError("BridgeProxy not started — call startup() first")
         return self._client
 
     async def _get(self, path: str) -> dict[str, Any] | None:
         """GET a JSON endpoint, returning None on any failure."""
-        import httpx
-
         try:
             resp = await self._ensure_client().get(path)
             if resp.status_code == 200:
@@ -61,8 +62,6 @@ class BridgeProxy:
 
     async def _post(self, path: str, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """POST JSON to an endpoint, returning None on any failure."""
-        import httpx
-
         try:
             resp = await self._ensure_client().post(path, json=data)
             if resp.status_code in (200, 201, 202):
@@ -78,8 +77,6 @@ class BridgeProxy:
 
     async def _put(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """PUT JSON to an endpoint."""
-        import httpx
-
         try:
             resp = await self._ensure_client().put(path, json=data)
             if resp.status_code == 200:
@@ -93,8 +90,6 @@ class BridgeProxy:
 
     async def _delete(self, path: str) -> dict[str, Any] | None:
         """DELETE an endpoint."""
-        import httpx
-
         try:
             resp = await self._ensure_client().delete(path)
             if resp.status_code == 200:
@@ -165,8 +160,6 @@ class BridgeProxy:
         Yields SSE-formatted strings. On connection failure, yields
         a bridge_disconnected event and stops.
         """
-        import httpx
-
         try:
             async with self._ensure_client().stream("GET", "/api/status/stream") as resp:
                 async for line in resp.aiter_lines():
@@ -179,8 +172,6 @@ class BridgeProxy:
 
     async def stream_logs(self) -> AsyncIterator[str]:
         """Relay SSE log stream from bridge daemon."""
-        import httpx
-
         try:
             async with self._ensure_client().stream("GET", "/api/logs/stream") as resp:
                 async for line in resp.aiter_lines():

@@ -196,7 +196,7 @@ class BlueZManager:
                 ),
                 timeout=timeout,
             )
-        except TimeoutError:
+        except TimeoutError as exc:
             logger.warning(
                 "D-Bus call %s.%s on %s timed out after %.1fs",
                 interface, method, path, timeout,
@@ -205,7 +205,7 @@ class BlueZManager:
                 error="dbus_timeout",
                 message=f"D-Bus call {method} timed out after {timeout}s",
                 status_code=504,
-            )
+            ) from exc
         except Exception as exc:
             logger.error("D-Bus call %s.%s on %s failed: %s", interface, method, path, exc)
             raise BluetoothError(
@@ -495,7 +495,7 @@ class BlueZManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            _, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             if proc.returncode != 0:
                 return False  # Not running, nothing to do
 
@@ -623,7 +623,7 @@ class BlueZManager:
                         )
                     )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("hcitool scan timed out")
         except asyncio.CancelledError:
             pass
@@ -748,7 +748,7 @@ class BlueZManager:
         if self._hcitool_task and not self._hcitool_task.done():
             try:
                 await asyncio.wait_for(self._hcitool_task, timeout=15.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 self._hcitool_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._hcitool_task
@@ -874,7 +874,7 @@ class BlueZManager:
                     )
 
             if props is None:
-                raise DeviceNotFoundError(mac)
+                raise DeviceNotFoundError(mac) from None
 
         if props.get("Paired", False):
             raise AlreadyPairedError()
