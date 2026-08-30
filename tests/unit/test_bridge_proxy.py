@@ -46,7 +46,9 @@ class TestBridgeProxyGetStatus:
         await proxy.startup()
 
         with patch.object(
-            proxy._client, "get", new_callable=AsyncMock,
+            proxy._client,
+            "get",
+            new_callable=AsyncMock,
             side_effect=httpx.ConnectError("refused"),
         ):
             result = await proxy.get_status()
@@ -60,7 +62,9 @@ class TestBridgeProxyGetStatus:
         await proxy.startup()
 
         with patch.object(
-            proxy._client, "get", new_callable=AsyncMock,
+            proxy._client,
+            "get",
+            new_callable=AsyncMock,
             side_effect=httpx.TimeoutException("timed out"),
         ):
             result = await proxy.get_status()

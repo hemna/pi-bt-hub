@@ -43,8 +43,7 @@ class AppSettingsUpdate:
     def __post_init__(self) -> None:
         if self.scan_duration_seconds is not None and not 5 <= self.scan_duration_seconds <= 60:
             msg = (
-                f"scan_duration_seconds must be between 5 and 60, "
-                f"got {self.scan_duration_seconds}"
+                f"scan_duration_seconds must be between 5 and 60, got {self.scan_duration_seconds}"
             )
             raise ValueError(msg)
         if isinstance(self.theme, str):

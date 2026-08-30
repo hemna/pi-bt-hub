@@ -24,18 +24,18 @@ async def client_bridge_disabled() -> AsyncIterator[AsyncClient]:
     os.environ.pop("BT_HUB_BRIDGE_ENABLED", None)
 
     from bt_hub.config import get_settings
+
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
 
     from bt_hub.deps import set_templates
 
-    template_dir = (
-        Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
-    )
+    template_dir = Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
     set_templates(Jinja2Templates(directory=str(template_dir)))
 
     from bt_hub.main import create_app
+
     app = create_app()
 
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
@@ -51,15 +51,14 @@ async def client_bridge_enabled() -> AsyncIterator[AsyncClient]:
     os.environ["BT_HUB_BRIDGE_ENABLED"] = "true"
 
     from bt_hub.config import get_settings
+
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
 
     from bt_hub.deps import set_bridge_proxy, set_templates
 
-    template_dir = (
-        Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
-    )
+    template_dir = Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
     set_templates(Jinja2Templates(directory=str(template_dir)))
 
     mock_proxy = MagicMock()
@@ -71,6 +70,7 @@ async def client_bridge_enabled() -> AsyncIterator[AsyncClient]:
 
     try:
         from bt_hub.main import create_app
+
         app = create_app()
 
         transport = ASGITransport(app=app)  # type: ignore[arg-type]

@@ -45,9 +45,11 @@ def ws_client(
         log_handler=SSELogHandler(),
     )
 
-    with patch("bt_hub.main.startup_services", AsyncMock(return_value=mock_services)), \
-         patch("bt_hub.main.create_templates", return_value=templates), \
-         patch("bt_hub.main.shutdown_services", AsyncMock()):
+    with (
+        patch("bt_hub.main.startup_services", AsyncMock(return_value=mock_services)),
+        patch("bt_hub.main.create_templates", return_value=templates),
+        patch("bt_hub.main.shutdown_services", AsyncMock()),
+    ):
         app = create_app()
         with TestClient(app) as client:
             yield client
@@ -67,9 +69,7 @@ class TestWebSocketConnection:
 
         with ws_client.websocket_connect("/ws") as ws:
             asyncio.get_event_loop().run_until_complete(
-                event_bus.publish(
-                    Event("device_discovered", {"mac_address": "AA:BB:CC:DD:EE:FF"})
-                )
+                event_bus.publish(Event("device_discovered", {"mac_address": "AA:BB:CC:DD:EE:FF"}))
             )
             data = ws.receive_json()
             assert data["event"] == "device_discovered"

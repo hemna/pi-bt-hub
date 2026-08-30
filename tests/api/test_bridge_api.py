@@ -51,15 +51,14 @@ async def bridge_client() -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
     os.environ["BT_HUB_BRIDGE_ENABLED"] = "true"
 
     from bt_hub.config import get_settings
+
     get_settings.cache_clear()
 
     from starlette.templating import Jinja2Templates
 
     from bt_hub.deps import set_bridge_proxy, set_templates
 
-    template_dir = (
-        Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
-    )
+    template_dir = Path(__file__).parent.parent.parent / "backend" / "src" / "bt_hub" / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
 
     mock_proxy = _make_mock_proxy()
@@ -110,9 +109,7 @@ class TestBridgeSettingsAPI:
 
     async def test_update_settings(self, bridge_client: tuple) -> None:
         client, _ = bridge_client
-        resp = await client.post(
-            "/api/bridge/settings", json={"device_name": "NewName"}
-        )
+        resp = await client.post("/api/bridge/settings", json={"device_name": "NewName"})
         assert resp.status_code == 200
 
 
@@ -141,9 +138,7 @@ class TestBridgeTncAPI:
 
     async def test_add_tnc(self, bridge_client: tuple) -> None:
         client, mock_proxy = bridge_client
-        resp = await client.post(
-            "/api/bridge/tnc", json={"address": "11:22:33:44:55:66"}
-        )
+        resp = await client.post("/api/bridge/tnc", json={"address": "11:22:33:44:55:66"})
         assert resp.status_code == 200
         mock_proxy.add_tnc.assert_awaited_once()
 
@@ -160,9 +155,7 @@ class TestBridgeTncAPI:
             json={"name": "Updated"},
         )
         assert resp.status_code == 200
-        mock_proxy.update_tnc.assert_awaited_once_with(
-            "AA:BB:CC:DD:EE:FF", {"name": "Updated"}
-        )
+        mock_proxy.update_tnc.assert_awaited_once_with("AA:BB:CC:DD:EE:FF", {"name": "Updated"})
 
     async def test_delete_tnc(self, bridge_client: tuple) -> None:
         client, mock_proxy = bridge_client

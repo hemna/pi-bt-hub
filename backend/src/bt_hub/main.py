@@ -91,6 +91,7 @@ def create_app() -> Starlette:
 
     if settings.bridge_enabled:
         from bt_hub.api.bridge import router as bridge_router
+
         routes += list(bridge_router.routes)
 
     static_dir = Path(__file__).parent.parent / "static"

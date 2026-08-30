@@ -199,7 +199,10 @@ class BlueZManager:
         except TimeoutError as exc:
             logger.warning(
                 "D-Bus call %s.%s on %s timed out after %.1fs",
-                interface, method, path, timeout,
+                interface,
+                method,
+                path,
+                timeout,
             )
             raise BluetoothError(
                 error="dbus_timeout",
@@ -491,7 +494,10 @@ class BlueZManager:
         try:
             # Check if bt-bridge is active
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "is-active", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "is-active",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -503,7 +509,10 @@ class BlueZManager:
             logger.info("Stopping bt-bridge to allow Classic BT discovery...")
             # First send SIGTERM via kill (immediate, doesn't wait)
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "kill", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "kill",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -513,7 +522,10 @@ class BlueZManager:
             for _ in range(10):
                 await asyncio.sleep(0.5)
                 check = await asyncio.create_subprocess_exec(
-                    "sudo", systemctl, "is-active", "bt-bridge.service",
+                    "sudo",
+                    systemctl,
+                    "is-active",
+                    "bt-bridge.service",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -525,7 +537,11 @@ class BlueZManager:
                 # Still alive after 5s — force kill
                 logger.warning("bt-bridge didn't stop gracefully, sending SIGKILL")
                 proc = await asyncio.create_subprocess_exec(
-                    "sudo", systemctl, "kill", "--signal=SIGKILL", "bt-bridge.service",
+                    "sudo",
+                    systemctl,
+                    "kill",
+                    "--signal=SIGKILL",
+                    "bt-bridge.service",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -549,7 +565,10 @@ class BlueZManager:
         try:
             logger.info("Restarting bt-bridge after scan...")
             proc = await asyncio.create_subprocess_exec(
-                "sudo", systemctl, "start", "bt-bridge.service",
+                "sudo",
+                systemctl,
+                "start",
+                "bt-bridge.service",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -576,13 +595,13 @@ class BlueZManager:
         try:
             logger.info("Running hcitool scan for Classic BR/EDR devices...")
             proc = await asyncio.create_subprocess_exec(
-                hcitool, "scan", "--flush",
+                hcitool,
+                "scan",
+                "--flush",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=float(duration + 5)
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=float(duration + 5))
 
             if proc.returncode != 0:
                 logger.debug(
@@ -771,6 +790,7 @@ class BlueZManager:
             if self._bridge_was_running:
                 await self._restart_bridge_after_scan()
                 self._bridge_was_running = False
+
     # --- Device operations ---
 
     async def get_all_device_states(self) -> dict[str, dict[str, Any]]:
